@@ -1,0 +1,29 @@
+# Build
+target/
+dependency-reduced-pom.xml
+*.class
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Logs e env
+*.log
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Quarkus / Maven extras
+.mvn/wrapper/maven-wrapper.jar
+build/
+out/
+
+# Privados (não versionar)
+docs
+.claude
