@@ -121,6 +121,7 @@ Relatório JaCoCo em `target/site/jacoco/index.html`.
 | --- | --- | --- | --- |
 | Health | GET | `/health` | público |
 | Swagger UI | GET | `/swagger` | público |
+| Painel de demonstração | GET | `/` | público |
 | Login JWT | POST | `/auth/login` | público |
 | Cadastrar usuário | POST | `/auth/usuarios` | ADMINISTRADOR |
 | Clientes | CRUD | `/clientes` | ATENDENTE/ADMIN (escrita) · todos (leitura) |
