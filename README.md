@@ -30,19 +30,21 @@ Sistema de gestão de uma oficina mecânica: cadastro de clientes, veículos e s
 
 ---
 
-## Arquitetura em camadas (DDD)
+## Arquitetura — Clean Architecture (canônica, por bounded context)
 
 ```
-interfaces        → REST resources (Quarkus)
+external (api/persistence/security/config)   → Frameworks & Drivers (Quarkus, JPA, JWT)
    ↓
-application       → casos de uso (orquestração, transações)
+controllers · presenters · gateways · dtos   → Interface Adapters (por BC)
    ↓
-domain            → agregados, VOs, repositórios (interfaces), regras de negócio
-   ↑
-infrastructure    → impls de repositório (JPA/Panache), JWT, Flyway, persistência
+usecases                                      → Application (1 classe por caso de uso)
+   ↓
+entities                                      → Enterprise (agregados, VOs, regras puras)
 ```
 
-**OBS:** o pacote `domain` **não** importa Quarkus, JPA, Jackson ou qualquer framework. Frameworks só entram em `interfaces`, `application` e `infrastructure`.
+A dependência aponta **sempre para dentro**. `entities` e `usecases` **não** importam
+Quarkus, JPA, Jackson nem `jakarta.transaction` — verificado por build (grep + gate JaCoCo).
+Detalhe completo, diagramas e o de→para da refatoração em **[docs/ARQUITETURA.md](docs/ARQUITETURA.md)**.
 
 ### Bounded Contexts
 
@@ -183,18 +185,21 @@ Em `src/main/resources/` há um par de chaves **só para dev** (`privateKey.pem`
 
 ```
 src/main/java/br/com/fiap/techchallenge/oficina
-├── interfaces/rest          # REST resources (controllers)
-├── application
-│   ├── atendimento
-│   └── estoque
-├── domain                   # framework-free
-│   ├── atendimento/{cliente,veiculo,servico,ordemservico}
-│   ├── estoque
-│   └── shared
-└── infrastructure
-    ├── persistence
-    ├── security
-    └── config
+├── atendimento/             # bounded context (mesmo padrão em estoque/, seguranca/, relatorio/)
+│   ├── entities/            # agregados + VOs + exceções    (framework-free)
+│   ├── usecases/            # 1 classe por caso de uso       (framework-free)
+│   ├── gateways/            # ports (ex-*Repository → *Gateway)
+│   ├── controllers/         # orquestram use cases + transação + presenter
+│   ├── presenters/          # domínio → *Response DTO
+│   └── dtos/                # Request/Response (records)
+├── shared/
+│   ├── entities/            # Documento, Placa, Dinheiro, DomainException
+│   └── usecases/            # ExecutorTransacional (porta de transação)
+└── external/                # Frameworks & Drivers
+    ├── api/                 # *Resource (JAX-RS) + exception mappers
+    ├── persistence/         # JPA/Panache, mappers, *GatewayImpl, ExecutorTransacionalJta
+    ├── security/            # JWT, BCrypt, AdminBootstrap
+    └── config/              # composition root (CDI @Produces) + OpenAPI
 
 src/main/resources
 ├── application.properties

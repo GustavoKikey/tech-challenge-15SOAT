@@ -1,0 +1,71 @@
+package br.com.fiap.techchallenge.oficina.external.persistence.peca;
+
+import br.com.fiap.techchallenge.oficina.atendimento.entities.OrdemServicoId;
+import br.com.fiap.techchallenge.oficina.estoque.entities.Peca;
+import br.com.fiap.techchallenge.oficina.estoque.entities.PecaId;
+import br.com.fiap.techchallenge.oficina.estoque.entities.Reserva;
+import br.com.fiap.techchallenge.oficina.estoque.entities.ReservaId;
+import br.com.fiap.techchallenge.oficina.estoque.entities.StatusReserva;
+import br.com.fiap.techchallenge.oficina.shared.entities.Dinheiro;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+final class PecaJpaMapper {
+
+    private PecaJpaMapper() {}
+
+    static PecaJpaEntity toEntity(Peca peca, PecaJpaEntity existente) {
+        PecaJpaEntity entity = existente != null ? existente : new PecaJpaEntity();
+        entity.id = peca.id().valor();
+        entity.descricao = peca.descricao();
+        entity.valorUnitario = peca.valorUnitario().valor();
+        entity.quantidadeTotal = peca.quantidadeTotal();
+
+        Map<UUID, ReservaJpaEntity> existentes = new HashMap<>();
+        for (ReservaJpaEntity r : entity.reservas) {
+            existentes.put(r.id, r);
+        }
+        for (Reserva reserva : peca.reservas()) {
+            ReservaJpaEntity rEntity = existentes.get(reserva.id().valor());
+            if (rEntity == null) {
+                rEntity = new ReservaJpaEntity();
+                rEntity.id = reserva.id().valor();
+                rEntity.criadaEm = reserva.criadaEm();
+                rEntity.quantidade = reserva.quantidade();
+                rEntity.ordemServicoId = reserva.ordemServicoId().valor();
+                rEntity.peca = entity;
+                rEntity.status = reserva.status().name();
+                entity.reservas.add(rEntity);
+            } else {
+                rEntity.status = reserva.status().name();
+            }
+        }
+        return entity;
+    }
+
+    static Peca toDomain(PecaJpaEntity entity) {
+        List<Reserva> reservas = entity.reservas.stream()
+                .map(PecaJpaMapper::toDomainReserva)
+                .toList();
+        return Peca.reconstituir(
+                PecaId.de(entity.id),
+                entity.descricao,
+                Dinheiro.de(entity.valorUnitario),
+                entity.quantidadeTotal,
+                reservas
+        );
+    }
+
+    private static Reserva toDomainReserva(ReservaJpaEntity entity) {
+        return Reserva.reconstituir(
+                ReservaId.de(entity.id),
+                OrdemServicoId.de(entity.ordemServicoId),
+                entity.quantidade,
+                StatusReserva.valueOf(entity.status),
+                entity.criadaEm
+        );
+    }
+}

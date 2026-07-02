@@ -219,9 +219,9 @@
                     <skip>${jacoco.skip}</skip>
                     <excludes>
                         <!-- DTOs / configs / classes geradas ficam fora do cálculo -->
-                        <exclude>**/dto/**</exclude>
+                        <exclude>**/dtos/**</exclude>
                         <exclude>**/config/**</exclude>
-                        <exclude>**/infrastructure/config/**</exclude>
+                        <exclude>**/external/config/**</exclude>
                         <exclude>**/generated/**</exclude>
                         <exclude>**/*Application*</exclude>
                         <exclude>**/package-info.class</exclude>
@@ -251,9 +251,10 @@
                             <rules>
                                 <rule>
                                     <element>PACKAGE</element>
+                                    <!-- Núcleo da Clean Architecture: entidades + casos de uso (por BC) -->
                                     <includes>
-                                        <include>br.com.fiap.techchallenge.oficina.domain.*</include>
-                                        <include>br.com.fiap.techchallenge.oficina.application.*</include>
+                                        <include>br.com.fiap.techchallenge.oficina.*.entities</include>
+                                        <include>br.com.fiap.techchallenge.oficina.*.usecases</include>
                                     </includes>
                                     <limits>
                                         <limit>
