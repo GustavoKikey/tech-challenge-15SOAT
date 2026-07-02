@@ -40,12 +40,14 @@ public class OrdemServico {
     private OffsetDateTime execucaoIniciadaEm;
     private OffsetDateTime finalizadaEm;
     private OffsetDateTime entregueEm;
+    private OffsetDateTime canceladaEm;
 
     private OrdemServico(OrdemServicoId id, ClienteId clienteId, VeiculoId veiculoId,
                          StatusOS status, List<ItemServico> itensServico, List<ItemPeca> itensPeca,
                          Orcamento orcamento, OffsetDateTime criadaEm,
                          OffsetDateTime diagnosticoIniciadoEm, OffsetDateTime execucaoIniciadaEm,
-                         OffsetDateTime finalizadaEm, OffsetDateTime entregueEm) {
+                         OffsetDateTime finalizadaEm, OffsetDateTime entregueEm,
+                         OffsetDateTime canceladaEm) {
         this.id = Objects.requireNonNull(id, "id");
         this.clienteId = Objects.requireNonNull(clienteId, "clienteId");
         this.veiculoId = Objects.requireNonNull(veiculoId, "veiculoId");
@@ -58,13 +60,14 @@ public class OrdemServico {
         this.execucaoIniciadaEm = execucaoIniciadaEm;
         this.finalizadaEm = finalizadaEm;
         this.entregueEm = entregueEm;
+        this.canceladaEm = canceladaEm;
     }
 
     public static OrdemServico abrir(ClienteId clienteId, VeiculoId veiculoId) {
         return new OrdemServico(
                 OrdemServicoId.novo(), clienteId, veiculoId, StatusOS.RECEBIDA,
                 List.of(), List.of(), null, OffsetDateTime.now(),
-                null, null, null, null);
+                null, null, null, null, null);
     }
 
     public static OrdemServico reconstituir(OrdemServicoId id, ClienteId clienteId, VeiculoId veiculoId,
@@ -72,10 +75,10 @@ public class OrdemServico {
                                             List<ItemPeca> itensPeca, Orcamento orcamento,
                                             OffsetDateTime criadaEm, OffsetDateTime diagnosticoIniciadoEm,
                                             OffsetDateTime execucaoIniciadaEm, OffsetDateTime finalizadaEm,
-                                            OffsetDateTime entregueEm) {
+                                            OffsetDateTime entregueEm, OffsetDateTime canceladaEm) {
         return new OrdemServico(id, clienteId, veiculoId, status, itensServico, itensPeca,
                 orcamento, criadaEm, diagnosticoIniciadoEm, execucaoIniciadaEm,
-                finalizadaEm, entregueEm);
+                finalizadaEm, entregueEm, canceladaEm);
     }
 
     // ---------- Transições de status ----------
@@ -104,6 +107,21 @@ public class OrdemServico {
         orcamento.aprovar();
         this.status = StatusOS.EM_EXECUCAO;
         this.execucaoIniciadaEm = OffsetDateTime.now();
+    }
+
+    /**
+     * Cliente recusou o orçamento — a OS é cancelada (exclusão lógica: continua
+     * persistida, mas sai da listagem padrão). O use case que orquestra a recusa
+     * é responsável por liberar as reservas de peças no BC Estoque.
+     */
+    public void recusarOrcamento() {
+        exigirStatus(StatusOS.AGUARDANDO_APROVACAO, StatusOS.CANCELADA);
+        if (orcamento == null) {
+            throw new TransicaoStatusInvalidaException(
+                    "Não há orçamento para recusar");
+        }
+        this.status = StatusOS.CANCELADA;
+        this.canceladaEm = OffsetDateTime.now();
     }
 
     public void finalizar() {
@@ -157,9 +175,9 @@ public class OrdemServico {
     }
 
     private void exigirEdicaoDeItens() {
-        if (status != StatusOS.EM_DIAGNOSTICO) {
+        if (status != StatusOS.RECEBIDA && status != StatusOS.EM_DIAGNOSTICO) {
             throw new TransicaoStatusInvalidaException(
-                    "Itens só podem ser editados em EM_DIAGNOSTICO; status atual: " + status);
+                    "Itens só podem ser editados em RECEBIDA ou EM_DIAGNOSTICO; status atual: " + status);
         }
         if (orcamento != null) {
             throw new OrcamentoJaGeradoException();
@@ -216,6 +234,23 @@ public class OrdemServico {
     public OffsetDateTime execucaoIniciadaEm()  { return execucaoIniciadaEm; }
     public OffsetDateTime finalizadaEm()        { return finalizadaEm; }
     public OffsetDateTime entregueEm()          { return entregueEm; }
+    public OffsetDateTime canceladaEm()         { return canceladaEm; }
+
+    /** Momento da última mudança de estado — usado na consulta de status. */
+    public OffsetDateTime atualizadaEm() {
+        OffsetDateTime ultima = criadaEm;
+        OffsetDateTime[] marcos = {
+                diagnosticoIniciadoEm,
+                orcamento == null ? null : orcamento.geradoEm(),
+                orcamento == null ? null : orcamento.aprovadoEm(),
+                execucaoIniciadaEm, finalizadaEm, entregueEm, canceladaEm};
+        for (OffsetDateTime marco : marcos) {
+            if (marco != null && marco.isAfter(ultima)) {
+                ultima = marco;
+            }
+        }
+        return ultima;
+    }
 
     @Override
     public boolean equals(Object o) {

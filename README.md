@@ -127,8 +127,11 @@ Relatório JaCoCo em `target/site/jacoco/index.html`.
 | Veículos | CRUD | `/veiculos` | ATENDENTE/ADMIN (escrita) · todos (leitura) |
 | Serviços | CRUD | `/servicos` | ADMINISTRADOR |
 | Peças / Estoque | CRUD + saldo | `/pecas` | ADMINISTRADOR |
-| Ordens de Serviço | CRUD + fluxo | `/ordens-servico` | varia por endpoint|
+| Ordens de Serviço | Abertura + fluxo | `/ordens-servico` | varia por endpoint|
+| Status da OS | GET | `/ordens-servico/{id}/status` | autenticado |
 | Consulta pública | GET | `/publico/ordens-servico/{id}` | **público** |
+| Status público da OS | GET | `/publico/ordens-servico/{id}/status` | **público** |
+| Decisão do orçamento (webhook) | POST | `/publico/ordens-servico/{id}/orcamento/decisao` | **público** |
 | Tempo médio | GET | `/relatorios/tempo-medio-execucao` | ADMINISTRADOR |
 
 ---
@@ -272,6 +275,6 @@ mvn -B clean verify sonar:sonar \
 Decisões conscientes para manter o MVP enxuto:
 
 - **Sem CORS habilitado** — o backend é consumido por um cliente confiável (Swagger UI no MVP). Habilitar quando o front-end web entrar em escopo.
-- **Aprovação do orçamento por endpoint admin** — no MVP o ato de aprovação fica na rota `/ordens-servico/{id}/orcamento/aprovar` protegida por `ATENDENTE/ADMINISTRADOR`, representando o cliente. A próxima fase deve introduzir um fluxo de aprovação assinado pelo próprio cliente (link único / OTP / app móvel).
+- **Decisão do orçamento por webhook público sem assinatura** — a fase 2 introduziu `POST /publico/ordens-servico/{id}/orcamento/decisao` para receber a aprovação/recusa externa do cliente (o UUID da OS funciona como capability token). Evolução futura: link único assinado / OTP / verificação de origem. A rota interna `/orcamento/aprovar|recusar` (ATENDENTE/ADMIN) segue disponível para registro presencial.
 - **Chaves RSA do JWT versionadas** — `privateKey.pem`/`publicKey.pem` em `src/main/resources/` são **só para dev**. Em produção, montar via secret manager (env `MP_JWT_VERIFY_PUBLICKEY_LOCATION` / `SMALLRYE_JWT_SIGN_KEY_LOCATION`).
 - **Senha admin default** — `admin123` no profile `dev`. Em produção, sobrescrever via env `ADMIN_PASSWORD`.

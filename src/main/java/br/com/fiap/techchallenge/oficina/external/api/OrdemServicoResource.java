@@ -1,10 +1,12 @@
 package br.com.fiap.techchallenge.oficina.external.api;
 
 import br.com.fiap.techchallenge.oficina.atendimento.controllers.OrdemServicoController;
-import br.com.fiap.techchallenge.oficina.atendimento.dtos.CriarOrdemServicoRequest;
+import br.com.fiap.techchallenge.oficina.atendimento.dtos.AberturaOrdemServicoResponse;
+import br.com.fiap.techchallenge.oficina.atendimento.dtos.AbrirOrdemServicoRequest;
 import br.com.fiap.techchallenge.oficina.atendimento.dtos.InserirItemPecaRequest;
 import br.com.fiap.techchallenge.oficina.atendimento.dtos.InserirItemServicoRequest;
 import br.com.fiap.techchallenge.oficina.atendimento.dtos.OrdemServicoResponse;
+import br.com.fiap.techchallenge.oficina.atendimento.dtos.StatusOSResponse;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
@@ -43,11 +45,13 @@ public class OrdemServicoResource {
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @RolesAllowed({"ATENDENTE", "ADMINISTRADOR"})
-    @Operation(summary = "Cria uma nova Ordem de Serviço (status RECEBIDA)")
-    @APIResponse(responseCode = "201", description = "OS criada")
-    @APIResponse(responseCode = "404", description = "Cliente ou veículo não encontrado")
-    public Response criar(@Valid CriarOrdemServicoRequest req) {
-        OrdemServicoResponse resp = controller.criar(req);
+    @Operation(summary = "Abertura de OS: recebe dados do cliente, veículo, serviços e peças "
+            + "e retorna a identificação única da OS (cliente/veículo novos são cadastrados)")
+    @APIResponse(responseCode = "201", description = "OS criada (status RECEBIDA)")
+    @APIResponse(responseCode = "404", description = "Serviço ou peça não encontrado")
+    @APIResponse(responseCode = "422", description = "Estoque insuficiente em alguma peça")
+    public Response abrir(@Valid AbrirOrdemServicoRequest req) {
+        AberturaOrdemServicoResponse resp = controller.abrir(req);
         return Response.created(UriBuilder.fromResource(OrdemServicoResource.class)
                         .path("{id}").build(resp.id()))
                 .entity(resp)
@@ -70,6 +74,15 @@ public class OrdemServicoResource {
     @APIResponse(responseCode = "404", description = "OS não encontrada")
     public OrdemServicoResponse buscar(@PathParam("id") UUID id) {
         return controller.buscar(id);
+    }
+
+    @GET
+    @Path("/{id}/status")
+    @RolesAllowed({"ATENDENTE", "MECANICO", "ADMINISTRADOR"})
+    @Operation(summary = "Consulta de status da OS: situação atual com descrição amigável")
+    @APIResponse(responseCode = "404", description = "OS não encontrada")
+    public StatusOSResponse consultarStatus(@PathParam("id") UUID id) {
+        return controller.consultarStatus(id);
     }
 
     @POST
@@ -146,10 +159,19 @@ public class OrdemServicoResource {
     @POST
     @Path("/{id}/orcamento/aprovar")
     @RolesAllowed({"ATENDENTE", "ADMINISTRADOR"})
-    @Operation(summary = "Aprova orçamento e dá baixa nas reservas (representa o cliente no MVP)")
+    @Operation(summary = "Aprova orçamento e dá baixa nas reservas (registro interno da decisão)")
     @APIResponse(responseCode = "409", description = "Transição inválida ou orçamento inexistente")
     public OrdemServicoResponse aprovarOrcamento(@PathParam("id") UUID id) {
         return controller.aprovarOrcamento(id);
+    }
+
+    @POST
+    @Path("/{id}/orcamento/recusar")
+    @RolesAllowed({"ATENDENTE", "ADMINISTRADOR"})
+    @Operation(summary = "Recusa orçamento: cancela a OS e libera as reservas de peças")
+    @APIResponse(responseCode = "409", description = "Transição inválida ou orçamento inexistente")
+    public OrdemServicoResponse recusarOrcamento(@PathParam("id") UUID id) {
+        return controller.recusarOrcamento(id);
     }
 
     @POST

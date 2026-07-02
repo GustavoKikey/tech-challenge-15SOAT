@@ -32,13 +32,16 @@ class OrdemServicoResourceIT {
         String pecaId = criarPeca("Filtro de óleo", "35.50", 5);
         String servicoId = criarServico("Troca de óleo", "120.00");
 
-        // 1) Cria OS — status RECEBIDA
+        // 1) Cria OS — status RECEBIDA (contrato fase 2: cliente/veículo aninhados)
         String osId = given().contentType("application/json")
-                .body(Map.of("documentoCliente", "10000000108", "placaVeiculo", "OSF1A23"))
+                .body(Map.of(
+                        "cliente", Map.of("documento", "10000000108"),
+                        "veiculo", Map.of("placa", "OSF1A23")))
                 .when().post("/ordens-servico")
                 .then().statusCode(201)
                     .body("id", notNullValue())
                     .body("status", equalTo("RECEBIDA"))
+                    .body("descricaoStatus", equalTo("Recebida"))
                     .body("criadaEm", notNullValue())
                 .extract().path("id");
 
@@ -186,11 +189,111 @@ class OrdemServicoResourceIT {
     }
 
     @Test
-    void criarOSComClienteInexistenteRetorna404() {
+    void abrirOSComClienteDesconhecidoSemNomeRetorna404() {
+        // Get-or-create: sem o nome não há como cadastrar o cliente na hora.
         given().contentType("application/json")
-                .body(Map.of("documentoCliente", "400.000.004-77", "placaVeiculo", "ZZZ9X99"))
+                .body(Map.of(
+                        "cliente", Map.of("documento", "400.000.004-77"),
+                        "veiculo", Map.of("placa", "ZZZ9X99")))
                 .when().post("/ordens-servico")
                 .then().statusCode(404);
+    }
+
+    @Test
+    void aberturaCompletaStatusERecusaPublicaLiberamEstoque() {
+        String pecaId = criarPeca("Pastilha de freio", "80.00", 4);
+        String servicoId = criarServico("Troca de pastilha", "150.00");
+
+        // Abertura fase 2: cliente e veículo NOVOS (get-or-create) + serviços e peças
+        String osId = given().contentType("application/json")
+                .body(Map.of(
+                        "cliente", Map.of("documento", "500.000.005-66", "nome", "Carlos Recusa",
+                                "email", "carlos@email.com"),
+                        "veiculo", Map.of("placa", "REC2B34", "marca", "GM",
+                                "modelo", "Onix", "ano", 2021),
+                        "servicos", java.util.List.of(Map.of("servicoId", servicoId)),
+                        "pecas", java.util.List.of(Map.of("pecaId", pecaId, "quantidade", 2))))
+                .when().post("/ordens-servico")
+                .then().statusCode(201)
+                    .body("id", notNullValue())
+                    .body("status", equalTo("RECEBIDA"))
+                .extract().path("id");
+
+        // Consulta de status (público, com descrição amigável)
+        given().when().get("/publico/ordens-servico/" + osId + "/status")
+                .then().statusCode(200)
+                    .body("status", equalTo("RECEBIDA"))
+                    .body("descricao", equalTo("Recebida"))
+                    .body("atualizadoEm", notNullValue());
+
+        // Itens entraram na abertura: orçamento sai direto do diagnóstico
+        given().when().post("/ordens-servico/" + osId + "/diagnostico").then().statusCode(200);
+        given().when().post("/ordens-servico/" + osId + "/orcamento")
+                .then().statusCode(200)
+                    .body("orcamento.valorTotal", equalTo(310.00f)); // 150 + 2*80
+
+        given().when().get("/pecas/" + pecaId)
+                .then().statusCode(200)
+                    .body("saldoDisponivel", equalTo(2)); // 2 reservadas
+
+        given().when().post("/ordens-servico/" + osId + "/orcamento/enviar").then().statusCode(200);
+
+        // Notificação externa: cliente RECUSA o orçamento (endpoint público)
+        given().contentType("application/json")
+                .body(Map.of("aprovado", false))
+                .when().post("/publico/ordens-servico/" + osId + "/orcamento/decisao")
+                .then().statusCode(200)
+                    .body("status", equalTo("CANCELADA"))
+                    .body("descricao", equalTo("Cancelada"));
+
+        // Reservas liberadas: saldo devolvido ao estoque
+        given().when().get("/pecas/" + pecaId)
+                .then().statusCode(200)
+                    .body("quantidadeTotal", equalTo(4))
+                    .body("saldoDisponivel", equalTo(4));
+
+        // Exclusão lógica: some da listagem padrão…
+        given().when().get("/ordens-servico")
+                .then().statusCode(200)
+                    .body("findAll { it.id == '" + osId + "' }.size()", equalTo(0));
+
+        // …mas continua no banco, acessível com filtro explícito
+        given().when().get("/ordens-servico?status=CANCELADA")
+                .then().statusCode(200)
+                    .body("find { it.id == '" + osId + "' }.canceladaEm", notNullValue());
+    }
+
+    @Test
+    void listagemOrdenaPorPrioridadeDeStatusEMaisAntigasPrimeiro() {
+        // Duas OS: uma RECEBIDA antiga e uma EM_DIAGNOSTICO recente — diagnóstico vem antes
+        String c1 = criarCliente("Ordena A", "600.000.006-55");
+        criarVeiculo(c1, "ORD-3C45");
+        String osRecebida = abrirOS("60000000655", "ORD3C45");
+
+        String c2 = criarCliente("Ordena B", "700.000.007-44");
+        criarVeiculo(c2, "ORD-4D56");
+        String osDiagnostico = abrirOS("70000000744", "ORD4D56");
+        given().when().post("/ordens-servico/" + osDiagnostico + "/diagnostico")
+                .then().statusCode(200);
+
+        java.util.List<Map<String, Object>> lista = given()
+                .when().get("/ordens-servico")
+                .then().statusCode(200)
+                .extract().jsonPath().getList("$");
+
+        int posDiagnostico = indexOf(lista, osDiagnostico);
+        int posRecebida = indexOf(lista, osRecebida);
+        org.junit.jupiter.api.Assertions.assertTrue(posDiagnostico >= 0 && posRecebida >= 0,
+                "ambas as OS devem aparecer na listagem");
+        org.junit.jupiter.api.Assertions.assertTrue(posDiagnostico < posRecebida,
+                "EM_DIAGNOSTICO deve vir antes de RECEBIDA");
+    }
+
+    private static int indexOf(java.util.List<Map<String, Object>> lista, String osId) {
+        for (int i = 0; i < lista.size(); i++) {
+            if (osId.equals(lista.get(i).get("id"))) return i;
+        }
+        return -1;
     }
 
     // ---------------------------------------------------------------- helpers
@@ -229,12 +332,18 @@ class OrdemServicoResourceIT {
                 .extract().path("id");
     }
 
-    private String criarOSEAvancarParaDiagnostico(String documento, String placa) {
-        String id = given().contentType("application/json")
-                .body(Map.of("documentoCliente", documento, "placaVeiculo", placa))
+    private String abrirOS(String documento, String placa) {
+        return given().contentType("application/json")
+                .body(Map.of(
+                        "cliente", Map.of("documento", documento),
+                        "veiculo", Map.of("placa", placa)))
                 .when().post("/ordens-servico")
                 .then().statusCode(201)
                 .extract().path("id");
+    }
+
+    private String criarOSEAvancarParaDiagnostico(String documento, String placa) {
+        String id = abrirOS(documento, placa);
         given().when().post("/ordens-servico/" + id + "/diagnostico")
                 .then().statusCode(200);
         return id;

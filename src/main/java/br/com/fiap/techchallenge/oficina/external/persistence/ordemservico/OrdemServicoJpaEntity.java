@@ -49,6 +49,9 @@ public class OrdemServicoJpaEntity {
     @Column(name = "entregue_em")
     public OffsetDateTime entregueEm;
 
+    @Column(name = "cancelada_em")
+    public OffsetDateTime canceladaEm;
+
     @Column(name = "orcamento_gerado_em")
     public OffsetDateTime orcamentoGeradoEm;
 

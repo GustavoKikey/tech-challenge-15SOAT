@@ -1,6 +1,8 @@
 package br.com.fiap.techchallenge.oficina.atendimento.usecases;
 
+import br.com.fiap.techchallenge.oficina.atendimento.gateways.NotificacaoGateway;
 import br.com.fiap.techchallenge.oficina.estoque.usecases.BaixarPecaUseCase;
+import br.com.fiap.techchallenge.oficina.estoque.usecases.LiberarReservaUseCase;
 import br.com.fiap.techchallenge.oficina.estoque.usecases.ReservarPecaUseCase;
 import br.com.fiap.techchallenge.oficina.atendimento.entities.Cliente;
 import br.com.fiap.techchallenge.oficina.atendimento.entities.ClienteId;
@@ -52,47 +54,141 @@ class OrdemServicoUseCasesTest {
     @Mock PecaGateway pecaRepository;
     @Mock ReservarPecaUseCase reservarPeca;
     @Mock BaixarPecaUseCase baixarPeca;
+    @Mock LiberarReservaUseCase liberarReserva;
+    @Mock NotificacaoGateway notificacaoGateway;
 
     private static final String CPF = "11144477735";
     private static final String PLACA = "ABC1234";
 
-    // ---------- CriarOrdemServicoUseCase ----------
+    // ---------- AbrirOrdemServicoUseCase ----------
+
+    private AbrirOrdemServicoUseCase abrirUseCase() {
+        return new AbrirOrdemServicoUseCase(osRepository, clienteRepository,
+                veiculoRepository, servicoRepository, pecaRepository);
+    }
+
+    private static AbrirOrdemServicoUseCase.Input inputBasico(
+            java.util.List<AbrirOrdemServicoUseCase.ItemServicoInput> servicos,
+            java.util.List<AbrirOrdemServicoUseCase.ItemPecaInput> pecas) {
+        return new AbrirOrdemServicoUseCase.Input(
+                new AbrirOrdemServicoUseCase.DadosCliente(CPF, "Ana", "ana@email.com", null),
+                new AbrirOrdemServicoUseCase.DadosVeiculo(PLACA, "VW", "Golf", 2020),
+                servicos, pecas);
+    }
 
     @Test
-    void criarComCpfEPlacaValidos() {
+    void abrirComClienteEVeiculoExistentes() {
         Cliente cliente = Cliente.novo("Ana", Documento.de(CPF), null, null);
         Veiculo veiculo = Veiculo.novo(Placa.de(PLACA), "VW", "Golf", 2020, cliente.id());
         when(clienteRepository.buscarPorDocumento(any())).thenReturn(Optional.of(cliente));
         when(veiculoRepository.buscarPorPlaca(any())).thenReturn(Optional.of(veiculo));
         when(osRepository.salvar(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        CriarOrdemServicoUseCase uc = new CriarOrdemServicoUseCase(
-                osRepository, clienteRepository, veiculoRepository);
-        OrdemServico os = uc.executar(new CriarOrdemServicoUseCase.Input(CPF, PLACA));
+        OrdemServico os = abrirUseCase().executar(inputBasico(null, null));
 
         assertEquals(StatusOS.RECEBIDA, os.status());
         assertEquals(cliente.id(), os.clienteId());
         assertEquals(veiculo.id(), os.veiculoId());
+        verify(clienteRepository, never()).salvar(any());
+        verify(veiculoRepository, never()).salvar(any());
     }
 
     @Test
-    void criarFalhaSeClienteNaoExiste() {
+    void abrirCadastraClienteEVeiculoQuandoNaoExistem() {
         when(clienteRepository.buscarPorDocumento(any())).thenReturn(Optional.empty());
-        CriarOrdemServicoUseCase uc = new CriarOrdemServicoUseCase(
-                osRepository, clienteRepository, veiculoRepository);
-        assertThrows(ClienteNaoEncontradoException.class, () ->
-                uc.executar(new CriarOrdemServicoUseCase.Input(CPF, PLACA)));
+        when(clienteRepository.salvar(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(veiculoRepository.buscarPorPlaca(any())).thenReturn(Optional.empty());
+        when(veiculoRepository.salvar(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(osRepository.salvar(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        OrdemServico os = abrirUseCase().executar(inputBasico(null, null));
+
+        assertEquals(StatusOS.RECEBIDA, os.status());
+        verify(clienteRepository).salvar(any(Cliente.class));
+        verify(veiculoRepository).salvar(any(Veiculo.class));
     }
 
     @Test
-    void criarFalhaSeVeiculoNaoExiste() {
+    void abrirComServicosEPecasUsaValoresDoCatalogo() {
+        Cliente cliente = Cliente.novo("Ana", Documento.de(CPF), null, null);
+        Veiculo veiculo = Veiculo.novo(Placa.de(PLACA), "VW", "Golf", 2020, cliente.id());
+        Servico servico = Servico.novo("Troca de óleo", Dinheiro.de("150.00"));
+        Peca peca = Peca.novo("Filtro", Dinheiro.de("40.00"), 10);
+        when(clienteRepository.buscarPorDocumento(any())).thenReturn(Optional.of(cliente));
+        when(veiculoRepository.buscarPorPlaca(any())).thenReturn(Optional.of(veiculo));
+        when(servicoRepository.buscarPorId(servico.id())).thenReturn(Optional.of(servico));
+        when(pecaRepository.buscarPorId(peca.id())).thenReturn(Optional.of(peca));
+        when(osRepository.salvar(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        OrdemServico os = abrirUseCase().executar(inputBasico(
+                java.util.List.of(new AbrirOrdemServicoUseCase.ItemServicoInput(servico.id(), null)),
+                java.util.List.of(new AbrirOrdemServicoUseCase.ItemPecaInput(peca.id(), 2))));
+
+        assertEquals(1, os.itensServico().size());
+        assertEquals(Dinheiro.de("150.00"), os.itensServico().get(0).valorCobrado());
+        assertEquals(1, os.itensPeca().size());
+        assertEquals(Dinheiro.de("40.00"), os.itensPeca().get(0).valorUnitario());
+        assertEquals(2, os.itensPeca().get(0).quantidade());
+    }
+
+    @Test
+    void abrirFalhaSeClienteNovoSemNome() {
+        when(clienteRepository.buscarPorDocumento(any())).thenReturn(Optional.empty());
+
+        AbrirOrdemServicoUseCase uc = abrirUseCase();
+        var input = new AbrirOrdemServicoUseCase.Input(
+                new AbrirOrdemServicoUseCase.DadosCliente(CPF, null, null, null),
+                new AbrirOrdemServicoUseCase.DadosVeiculo(PLACA, "VW", "Golf", 2020),
+                null, null);
+        assertThrows(ClienteNaoEncontradoException.class, () -> uc.executar(input));
+        verify(clienteRepository, never()).salvar(any());
+    }
+
+    @Test
+    void abrirFalhaSeVeiculoNovoSemFichaTecnica() {
         Cliente cliente = Cliente.novo("Ana", Documento.de(CPF), null, null);
         when(clienteRepository.buscarPorDocumento(any())).thenReturn(Optional.of(cliente));
         when(veiculoRepository.buscarPorPlaca(any())).thenReturn(Optional.empty());
-        CriarOrdemServicoUseCase uc = new CriarOrdemServicoUseCase(
-                osRepository, clienteRepository, veiculoRepository);
-        assertThrows(VeiculoNaoEncontradoException.class, () ->
-                uc.executar(new CriarOrdemServicoUseCase.Input(CPF, PLACA)));
+
+        AbrirOrdemServicoUseCase uc = abrirUseCase();
+        var input = new AbrirOrdemServicoUseCase.Input(
+                new AbrirOrdemServicoUseCase.DadosCliente(CPF, "Ana", null, null),
+                new AbrirOrdemServicoUseCase.DadosVeiculo(PLACA, null, null, null),
+                null, null);
+        assertThrows(VeiculoNaoEncontradoException.class, () -> uc.executar(input));
+        verify(veiculoRepository, never()).salvar(any());
+    }
+
+    @Test
+    void abrirFalhaSeServicoNaoExiste() {
+        Cliente cliente = Cliente.novo("Ana", Documento.de(CPF), null, null);
+        Veiculo veiculo = Veiculo.novo(Placa.de(PLACA), "VW", "Golf", 2020, cliente.id());
+        when(clienteRepository.buscarPorDocumento(any())).thenReturn(Optional.of(cliente));
+        when(veiculoRepository.buscarPorPlaca(any())).thenReturn(Optional.of(veiculo));
+        ServicoId sid = ServicoId.novo();
+        when(servicoRepository.buscarPorId(sid)).thenReturn(Optional.empty());
+
+        AbrirOrdemServicoUseCase uc = abrirUseCase();
+        var input = inputBasico(
+                java.util.List.of(new AbrirOrdemServicoUseCase.ItemServicoInput(sid, null)), null);
+        assertThrows(ServicoNaoEncontradoException.class, () -> uc.executar(input));
+        verify(osRepository, never()).salvar(any());
+    }
+
+    @Test
+    void abrirFalhaSeEstoqueInsuficiente() {
+        Cliente cliente = Cliente.novo("Ana", Documento.de(CPF), null, null);
+        Veiculo veiculo = Veiculo.novo(Placa.de(PLACA), "VW", "Golf", 2020, cliente.id());
+        Peca peca = Peca.novo("Filtro", Dinheiro.de("40.00"), 1);
+        when(clienteRepository.buscarPorDocumento(any())).thenReturn(Optional.of(cliente));
+        when(veiculoRepository.buscarPorPlaca(any())).thenReturn(Optional.of(veiculo));
+        when(pecaRepository.buscarPorId(peca.id())).thenReturn(Optional.of(peca));
+
+        AbrirOrdemServicoUseCase uc = abrirUseCase();
+        var input = inputBasico(null,
+                java.util.List.of(new AbrirOrdemServicoUseCase.ItemPecaInput(peca.id(), 5)));
+        assertThrows(EstoqueInsuficienteException.class, () -> uc.executar(input));
+        verify(osRepository, never()).salvar(any());
     }
 
     // ---------- IniciarDiagnostico / Finalizar / Entregar ----------
@@ -380,13 +476,122 @@ class OrdemServicoUseCasesTest {
         assertEquals(2, out.item().quantidade());
     }
 
+    // ---------- RecusarOrcamentoUseCase (fase 2) ----------
+
     @Test
-    void listarRepassaFiltro() {
-        OrdemServicoGateway.Filtro f = new OrdemServicoGateway.Filtro(
-                StatusOS.RECEBIDA, ClienteId.novo(), null);
-        when(osRepository.listar(f)).thenReturn(java.util.List.of());
-        new ListarOrdensServicoUseCase(osRepository).executar(f);
-        verify(osRepository).listar(f);
+    void recusarOrcamentoCancelaOSELiberaReservas() {
+        OrdemServico os = osPronta();
+        when(osRepository.buscarPorIdComLock(os.id())).thenReturn(Optional.of(os));
+        when(osRepository.salvar(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        OrdemServico salvo = new RecusarOrcamentoUseCase(osRepository, liberarReserva)
+                .executar(os.id());
+
+        verify(liberarReserva, times(2)).executar(any());
+        assertEquals(StatusOS.CANCELADA, salvo.status());
+        assertNotNull(salvo.canceladaEm());
+    }
+
+    @Test
+    void recusarPropagaFalhaDaLiberacaoParaRollback() {
+        OrdemServico os = osPronta();
+        when(osRepository.buscarPorIdComLock(os.id())).thenReturn(Optional.of(os));
+        doThrow(new RuntimeException("falha ao liberar"))
+                .when(liberarReserva).executar(any());
+        RecusarOrcamentoUseCase uc = new RecusarOrcamentoUseCase(osRepository, liberarReserva);
+        assertThrows(RuntimeException.class, () -> uc.executar(os.id()));
+        verify(osRepository, never()).salvar(any());
+    }
+
+    @Test
+    void recusarForaDeAguardandoLanca() {
+        OrdemServico os = novaOSRecebida();
+        when(osRepository.buscarPorIdComLock(os.id())).thenReturn(Optional.of(os));
+        RecusarOrcamentoUseCase uc = new RecusarOrcamentoUseCase(osRepository, liberarReserva);
+        assertThrows(TransicaoStatusInvalidaException.class, () -> uc.executar(os.id()));
+        verifyNoInteractions(liberarReserva);
+    }
+
+    @Test
+    void recusarFalhaSeOSNaoExiste() {
+        OrdemServicoId id = OrdemServicoId.novo();
+        when(osRepository.buscarPorIdComLock(id)).thenReturn(Optional.empty());
+        RecusarOrcamentoUseCase uc = new RecusarOrcamentoUseCase(osRepository, liberarReserva);
+        assertThrows(OrdemServicoNaoEncontradaException.class, () -> uc.executar(id));
+    }
+
+    // ---------- ListarOrdensServicoUseCase (fase 2: ordenação + exclusão lógica) ----------
+
+    @Test
+    void listagemPadraoExcluiEncerradasEOrdenaPorPrioridadeEIdade() {
+        java.time.OffsetDateTime base = java.time.OffsetDateTime.now();
+        OrdemServico recebidaAntiga = osComStatus(StatusOS.RECEBIDA, base.minusDays(5));
+        OrdemServico recebidaNova = osComStatus(StatusOS.RECEBIDA, base.minusDays(1));
+        OrdemServico diagnostico = osComStatus(StatusOS.EM_DIAGNOSTICO, base);
+        OrdemServico aguardando = osComStatus(StatusOS.AGUARDANDO_APROVACAO, base);
+        OrdemServico emExecucao = osComStatus(StatusOS.EM_EXECUCAO, base);
+        OrdemServico finalizada = osComStatus(StatusOS.FINALIZADA, base.minusDays(9));
+        OrdemServico entregue = osComStatus(StatusOS.ENTREGUE, base.minusDays(9));
+        OrdemServico cancelada = osComStatus(StatusOS.CANCELADA, base.minusDays(9));
+
+        when(osRepository.listar(any())).thenReturn(java.util.List.of(
+                recebidaNova, finalizada, diagnostico, entregue,
+                recebidaAntiga, cancelada, aguardando, emExecucao));
+
+        var resultado = new ListarOrdensServicoUseCase(osRepository)
+                .executar(OrdemServicoGateway.Filtro.vazio());
+
+        assertEquals(java.util.List.of(
+                emExecucao, aguardando, diagnostico, recebidaAntiga, recebidaNova), resultado);
+    }
+
+    @Test
+    void listagemComStatusExplicitoIncluiEncerradas() {
+        java.time.OffsetDateTime base = java.time.OffsetDateTime.now();
+        OrdemServico finalizada = osComStatus(StatusOS.FINALIZADA, base);
+        OrdemServicoGateway.Filtro filtro = new OrdemServicoGateway.Filtro(
+                StatusOS.FINALIZADA, null, null);
+        when(osRepository.listar(filtro)).thenReturn(java.util.List.of(finalizada));
+
+        var resultado = new ListarOrdensServicoUseCase(osRepository).executar(filtro);
+
+        assertEquals(java.util.List.of(finalizada), resultado);
+    }
+
+    // ---------- NotificarStatusOSUseCase (fase 2) ----------
+
+    @Test
+    void notificaClienteComEmail() {
+        Cliente cliente = Cliente.novo("Ana", Documento.de(CPF), "ana@email.com", null);
+        OrdemServico os = OrdemServico.abrir(cliente.id(),
+                br.com.fiap.techchallenge.oficina.atendimento.entities.VeiculoId.novo());
+        when(clienteRepository.buscarPorId(cliente.id())).thenReturn(Optional.of(cliente));
+
+        new NotificarStatusOSUseCase(clienteRepository, notificacaoGateway).executar(os);
+
+        verify(notificacaoGateway).notificarMudancaStatus(os, cliente);
+    }
+
+    @Test
+    void naoNotificaClienteSemEmail() {
+        Cliente cliente = Cliente.novo("Ana", Documento.de(CPF), null, null);
+        OrdemServico os = OrdemServico.abrir(cliente.id(),
+                br.com.fiap.techchallenge.oficina.atendimento.entities.VeiculoId.novo());
+        when(clienteRepository.buscarPorId(cliente.id())).thenReturn(Optional.of(cliente));
+
+        new NotificarStatusOSUseCase(clienteRepository, notificacaoGateway).executar(os);
+
+        verifyNoInteractions(notificacaoGateway);
+    }
+
+    @Test
+    void naoNotificaSeClienteNaoEncontrado() {
+        OrdemServico os = novaOSRecebida();
+        when(clienteRepository.buscarPorId(os.clienteId())).thenReturn(Optional.empty());
+
+        new NotificarStatusOSUseCase(clienteRepository, notificacaoGateway).executar(os);
+
+        verifyNoInteractions(notificacaoGateway);
     }
 
     // ---------- Helpers ----------
@@ -400,6 +605,13 @@ class OrdemServicoUseCasesTest {
         OrdemServico os = novaOSRecebida();
         os.iniciarDiagnostico();
         return os;
+    }
+
+    private OrdemServico osComStatus(StatusOS status, java.time.OffsetDateTime criadaEm) {
+        return OrdemServico.reconstituir(OrdemServicoId.novo(), ClienteId.novo(),
+                br.com.fiap.techchallenge.oficina.atendimento.entities.VeiculoId.novo(),
+                status, java.util.List.of(), java.util.List.of(), null,
+                criadaEm, null, null, null, null, null);
     }
 
     /** OS já com orçamento gerado, peças com reservaId preenchido e status AGUARDANDO_APROVACAO. */

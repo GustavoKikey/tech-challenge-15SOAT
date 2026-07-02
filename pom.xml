@@ -66,6 +66,12 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
+        <!-- Mailer: notificação de status da OS por e-mail (fase 2) -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-mailer</artifactId>
+        </dependency>
+
         <!-- OpenAPI / Swagger UI -->
         <dependency>
             <groupId>io.quarkus</groupId>

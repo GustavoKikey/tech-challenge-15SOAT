@@ -21,7 +21,8 @@ public record OrdemServicoResponse(
         OffsetDateTime diagnosticoIniciadoEm,
         OffsetDateTime execucaoIniciadaEm,
         OffsetDateTime finalizadaEm,
-        OffsetDateTime entregueEm
+        OffsetDateTime entregueEm,
+        OffsetDateTime canceladaEm
 ) {
 
     public record ItemServicoView(UUID id, UUID servicoId, BigDecimal valorCobrado) {}

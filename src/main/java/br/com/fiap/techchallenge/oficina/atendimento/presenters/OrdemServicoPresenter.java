@@ -1,7 +1,9 @@
 package br.com.fiap.techchallenge.oficina.atendimento.presenters;
 
+import br.com.fiap.techchallenge.oficina.atendimento.dtos.AberturaOrdemServicoResponse;
 import br.com.fiap.techchallenge.oficina.atendimento.dtos.OrdemServicoPublicaResponse;
 import br.com.fiap.techchallenge.oficina.atendimento.dtos.OrdemServicoResponse;
+import br.com.fiap.techchallenge.oficina.atendimento.dtos.StatusOSResponse;
 import br.com.fiap.techchallenge.oficina.atendimento.entities.ItemPeca;
 import br.com.fiap.techchallenge.oficina.atendimento.entities.ItemServico;
 import br.com.fiap.techchallenge.oficina.atendimento.entities.Orcamento;
@@ -29,7 +31,26 @@ public class OrdemServicoPresenter {
                 os.diagnosticoIniciadoEm(),
                 os.execucaoIniciadaEm(),
                 os.finalizadaEm(),
-                os.entregueEm());
+                os.entregueEm(),
+                os.canceladaEm());
+    }
+
+    /** Retorno enxuto da abertura — destaca a identificação única da OS. */
+    public AberturaOrdemServicoResponse apresentarAbertura(OrdemServico os) {
+        return new AberturaOrdemServicoResponse(
+                os.id().valor(),
+                os.status().name(),
+                os.status().descricao(),
+                os.criadaEm());
+    }
+
+    /** Consulta de status: situação atual com descrição amigável. */
+    public StatusOSResponse apresentarStatus(OrdemServico os) {
+        return new StatusOSResponse(
+                os.id().valor(),
+                os.status().name(),
+                os.status().descricao(),
+                os.atualizadaEm());
     }
 
     public List<OrdemServicoResponse> apresentar(List<OrdemServico> ordens) {

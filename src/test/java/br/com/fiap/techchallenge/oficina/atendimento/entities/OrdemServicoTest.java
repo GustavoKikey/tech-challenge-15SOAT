@@ -45,8 +45,20 @@ class OrdemServicoTest {
     }
 
     @Test
-    void inserirServicoExigeEmDiagnostico() {
+    void inserirItensEmRecebidaPermitido() {
+        // Fase 2: a abertura da OS já recebe serviços e peças, antes do diagnóstico.
         OrdemServico os = novaOS();
+        os.inserirServico(ServicoId.novo(), Dinheiro.de("100.00"));
+        os.inserirPeca(PecaId.novo(), 1, Dinheiro.de("50.00"));
+        assertEquals(1, os.itensServico().size());
+        assertEquals(1, os.itensPeca().size());
+    }
+
+    @Test
+    void inserirServicoForaDeEdicaoLanca() {
+        OrdemServico os = OrdemServico.reconstituir(OrdemServicoId.novo(), ClienteId.novo(),
+                VeiculoId.novo(), StatusOS.EM_EXECUCAO, java.util.List.of(), java.util.List.of(),
+                null, java.time.OffsetDateTime.now(), null, null, null, null, null);
         assertThrows(TransicaoStatusInvalidaException.class,
                 () -> os.inserirServico(ServicoId.novo(), Dinheiro.de("100.00")));
     }
@@ -218,10 +230,10 @@ class OrdemServicoTest {
         VeiculoId v = VeiculoId.novo();
         OrdemServico a = OrdemServico.reconstituir(id, c, v, StatusOS.RECEBIDA,
                 java.util.List.of(), java.util.List.of(), null,
-                java.time.OffsetDateTime.now(), null, null, null, null);
+                java.time.OffsetDateTime.now(), null, null, null, null, null);
         OrdemServico b = OrdemServico.reconstituir(id, c, v, StatusOS.ENTREGUE,
                 java.util.List.of(), java.util.List.of(), null,
-                java.time.OffsetDateTime.now(), null, null, null, null);
+                java.time.OffsetDateTime.now(), null, null, null, null, null);
         assertEquals(a, b);
         assertEquals(a.hashCode(), b.hashCode());
         assertNotEquals(a, novaOS());
@@ -233,8 +245,72 @@ class OrdemServicoTest {
     void aprovarOrcamentoSemOrcamentoLanca() {
         OrdemServico os = OrdemServico.reconstituir(OrdemServicoId.novo(), ClienteId.novo(), VeiculoId.novo(),
                 StatusOS.AGUARDANDO_APROVACAO, java.util.List.of(), java.util.List.of(), null,
-                java.time.OffsetDateTime.now(), java.time.OffsetDateTime.now(), null, null, null);
+                java.time.OffsetDateTime.now(), java.time.OffsetDateTime.now(), null, null, null, null);
         assertThrows(TransicaoStatusInvalidaException.class, os::aprovarOrcamento);
+    }
+
+    // ---------- Recusa de orçamento (fase 2) ----------
+
+    @Test
+    void recusarOrcamentoCancelaOS() {
+        OrdemServico os = novaOS();
+        os.iniciarDiagnostico();
+        os.inserirServico(ServicoId.novo(), Dinheiro.de("100.00"));
+        os.gerarOrcamento();
+        os.enviarOrcamento();
+
+        os.recusarOrcamento();
+
+        assertEquals(StatusOS.CANCELADA, os.status());
+        assertNotNull(os.canceladaEm());
+        assertFalse(os.orcamento().aprovado());
+    }
+
+    @Test
+    void recusarForaDeAguardandoAprovacaoLanca() {
+        OrdemServico os = novaOS();
+        assertThrows(TransicaoStatusInvalidaException.class, os::recusarOrcamento);
+    }
+
+    @Test
+    void recusarSemOrcamentoLanca() {
+        OrdemServico os = OrdemServico.reconstituir(OrdemServicoId.novo(), ClienteId.novo(), VeiculoId.novo(),
+                StatusOS.AGUARDANDO_APROVACAO, java.util.List.of(), java.util.List.of(), null,
+                java.time.OffsetDateTime.now(), java.time.OffsetDateTime.now(), null, null, null, null);
+        assertThrows(TransicaoStatusInvalidaException.class, os::recusarOrcamento);
+    }
+
+    @Test
+    void atualizadaEmAcompanhaUltimaTransicao() {
+        OrdemServico os = novaOS();
+        assertEquals(os.criadaEm(), os.atualizadaEm());
+
+        os.iniciarDiagnostico();
+        assertEquals(os.diagnosticoIniciadoEm(), os.atualizadaEm());
+
+        os.inserirServico(ServicoId.novo(), Dinheiro.de("100.00"));
+        os.gerarOrcamento();
+        os.enviarOrcamento();
+        os.recusarOrcamento();
+        assertEquals(os.canceladaEm(), os.atualizadaEm());
+    }
+
+    @Test
+    void statusCarregaDescricaoEPrioridadeDeListagem() {
+        assertEquals("Aguardando Aprovação", StatusOS.AGUARDANDO_APROVACAO.descricao());
+        assertEquals("Execução", StatusOS.EM_EXECUCAO.descricao());
+
+        assertTrue(StatusOS.EM_EXECUCAO.prioridadeListagem()
+                < StatusOS.AGUARDANDO_APROVACAO.prioridadeListagem());
+        assertTrue(StatusOS.AGUARDANDO_APROVACAO.prioridadeListagem()
+                < StatusOS.EM_DIAGNOSTICO.prioridadeListagem());
+        assertTrue(StatusOS.EM_DIAGNOSTICO.prioridadeListagem()
+                < StatusOS.RECEBIDA.prioridadeListagem());
+
+        assertTrue(StatusOS.RECEBIDA.visivelNaListagemPadrao());
+        assertFalse(StatusOS.FINALIZADA.visivelNaListagemPadrao());
+        assertFalse(StatusOS.ENTREGUE.visivelNaListagemPadrao());
+        assertFalse(StatusOS.CANCELADA.visivelNaListagemPadrao());
     }
 
     @Test

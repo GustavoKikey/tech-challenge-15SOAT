@@ -33,6 +33,7 @@ final class OrdemServicoJpaMapper {
         entity.execucaoIniciadaEm = os.execucaoIniciadaEm();
         entity.finalizadaEm = os.finalizadaEm();
         entity.entregueEm = os.entregueEm();
+        entity.canceladaEm = os.canceladaEm();
 
         Orcamento orcamento = os.orcamento();
         if (orcamento != null) {
@@ -118,7 +119,8 @@ final class OrdemServicoJpaMapper {
                 entity.diagnosticoIniciadoEm,
                 entity.execucaoIniciadaEm,
                 entity.finalizadaEm,
-                entity.entregueEm
+                entity.entregueEm,
+                entity.canceladaEm
         );
     }
 

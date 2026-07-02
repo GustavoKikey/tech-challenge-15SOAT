@@ -36,6 +36,7 @@ class PecaUseCasesTest {
     @InjectMocks AdicionarSaldoUseCase adicionarSaldo;
     @InjectMocks ReservarPecaUseCase reservar;
     @InjectMocks BaixarPecaUseCase baixar;
+    @InjectMocks LiberarReservaUseCase liberar;
 
     @Test
     void cadastrar() {
@@ -170,5 +171,29 @@ class PecaUseCasesTest {
         when(repository.buscarPorIdComLock(id)).thenReturn(Optional.empty());
         var input = new BaixarPecaUseCase.Input(id, br.com.fiap.techchallenge.oficina.estoque.entities.ReservaId.novo());
         assertThrows(PecaNaoEncontradaException.class, () -> baixar.executar(input));
+    }
+
+    @Test
+    void liberarReservaDevolveSaldo() {
+        Peca p = Peca.novo("x", Dinheiro.de("1.00"), 10);
+        Reserva r = p.reservar(OrdemServicoId.novo(), 3);
+        assertEquals(7, p.saldoDisponivel());
+        when(repository.buscarPorIdComLock(p.id())).thenReturn(Optional.of(p));
+        when(repository.salvar(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        Peca res = liberar.executar(new LiberarReservaUseCase.Input(p.id(), r.id()));
+
+        assertEquals(10, res.saldoDisponivel());
+        assertEquals(10, res.quantidadeTotal());
+        verify(repository).buscarPorIdComLock(p.id());
+        verify(repository).salvar(p);
+    }
+
+    @Test
+    void liberarFalhaSePecaNaoExiste() {
+        PecaId id = PecaId.novo();
+        when(repository.buscarPorIdComLock(id)).thenReturn(Optional.empty());
+        var input = new LiberarReservaUseCase.Input(id, br.com.fiap.techchallenge.oficina.estoque.entities.ReservaId.novo());
+        assertThrows(PecaNaoEncontradaException.class, () -> liberar.executar(input));
     }
 }
