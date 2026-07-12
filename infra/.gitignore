@@ -1,0 +1,25 @@
+# Diretório de trabalho do Terraform (providers baixados)
+.terraform/
+
+# Estado — contém dados sensíveis (senha do banco); nunca versionar
+*.tfstate
+*.tfstate.*
+
+# Kubeconfig gerado pelo provider kind (certificados do cluster local)
+oficina-config
+*-config
+
+# Logs de crash
+crash.log
+crash.*.log
+
+# Variáveis locais (podem conter segredos)
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Overrides locais
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

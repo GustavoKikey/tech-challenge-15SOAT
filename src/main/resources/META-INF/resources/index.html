@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oficina — Demonstração Fase 2</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔧</text></svg>">
+    <link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<header>
+    <div>
+        <h1>🔧 Oficina Mecânica — Tech Challenge <span class="tag-fase">Fase 2 · 15SOAT</span></h1>
+        <p class="subtitle">Painel de demonstração das APIs da Fase 2 — cada passo mostra o endpoint, o payload enviado e a resposta.</p>
+    </div>
+    <div class="controles">
+        <div id="contexto" class="contexto">
+            <span class="chip" id="chip-auth">🔒 não autenticado</span>
+            <span class="chip" id="chip-servico">serviçoId: —</span>
+            <span class="chip" id="chip-peca">peçaId: —</span>
+            <span class="chip" id="chip-os">OS: —</span>
+        </div>
+        <div class="botoes-sessao">
+            <button id="btn-sair" class="btn-controle" title="Descarta o token JWT desta sessão">🔓 Sair</button>
+            <button id="btn-limpar-contexto" class="btn-controle" title="Esquece os ids capturados (serviço, peça, OS)">🧹 Limpar contexto</button>
+            <button id="btn-limpar-historico" class="btn-controle" title="Apaga a lista de chamadas do painel">🗑️ Limpar histórico</button>
+        </div>
+    </div>
+</header>
+
+<main>
+    <section id="passos" class="passos">
+        <!-- cards gerados pelo demo.js -->
+    </section>
+
+    <aside class="painel">
+        <div class="painel-bloco">
+            <h2>📡 Requisição</h2>
+            <div id="req-linha" class="req-linha vazio">execute um passo ao lado…</div>
+            <pre id="req-body" class="codigo vazio">—</pre>
+        </div>
+        <div class="painel-bloco">
+            <h2>📥 Resposta <span id="resp-status" class="status-badge"></span></h2>
+            <pre id="resp-body" class="codigo vazio">—</pre>
+        </div>
+        <div class="painel-bloco">
+            <h2>🕘 Histórico</h2>
+            <ul id="historico" class="historico"></ul>
+        </div>
+    </aside>
+</main>
+
+<footer>
+    Servido pelo próprio Quarkus (<code>META-INF/resources</code>) — sem CORS, sem build de front.
+    Swagger continua disponível em <a href="/swagger" target="_blank">/swagger</a>.
+</footer>
+
+<script src="demo.js"></script>
+</body>
+</html>

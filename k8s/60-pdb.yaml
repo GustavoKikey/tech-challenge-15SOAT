@@ -1,0 +1,20 @@
+# =====================================================================
+# PodDisruptionBudget — disponibilidade durante manutenção do cluster
+# ---------------------------------------------------------------------
+# Garante que operações voluntárias (drain de nó para upgrade, por
+# exemplo) nunca derrubem todos os pods da API ao mesmo tempo: pelo
+# menos 1 pod permanece no ar. Complementa o minReplicas=2 do HPA.
+# =====================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: oficina-app
+  namespace: oficina
+  labels:
+    app.kubernetes.io/name: oficina-app
+    app.kubernetes.io/part-of: oficina
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oficina-app

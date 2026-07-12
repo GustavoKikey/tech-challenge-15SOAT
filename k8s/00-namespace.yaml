@@ -1,0 +1,14 @@
+# =====================================================================
+# Namespace da aplicação
+# ---------------------------------------------------------------------
+# Isola todos os recursos da oficina em um "espaço" próprio dentro do
+# cluster. O Terraform (infra/database.tf) também cria este namespace ao
+# provisionar o banco — aplicar este manifesto por cima é idempotente e
+# mantém a pasta k8s/ utilizável de forma independente (ex.: minikube).
+# =====================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: oficina
+  labels:
+    app.kubernetes.io/part-of: oficina

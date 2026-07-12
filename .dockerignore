@@ -1,5 +1,6 @@
 target/
 .git/
+.github/
 .idea/
 .vscode/
 *.iml
@@ -7,5 +8,8 @@ target/
 .env
 docs/
 .claude/
+infra/
+k8s/
+scripts/
 README.md
 .gitignore

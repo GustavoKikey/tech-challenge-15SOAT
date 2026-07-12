@@ -1,0 +1,57 @@
+# =====================================================================
+# Gerador de carga — teste da escala automática (HPA)
+# ---------------------------------------------------------------------
+# Sobe 3 pods que martelam POST /auth/login continuamente. O login usa
+# BCrypt (proposital e computacionalmente caro), então poucas requisições
+# por segundo já elevam a CPU dos pods da API acima do alvo de 70% do
+# HPA — que responde subindo novas réplicas.
+#
+# Fica em scripts/ (e não em k8s/) DE PROPÓSITO: não faz parte da
+# aplicação; é uma ferramenta de teste de carga.
+#
+# Iniciar carga ..: kubectl apply -f scripts/gerador-carga.yaml
+# Acompanhar .....: kubectl -n oficina get hpa -w
+#                   kubectl -n oficina get pods -w
+# Parar a carga ..: kubectl delete -f scripts/gerador-carga.yaml
+#                   (sem carga, o HPA volta para minReplicas=2 em alguns
+#                   minutos — janela de scale-down é conservadora)
+# =====================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gerador-carga
+  namespace: oficina
+  labels:
+    app.kubernetes.io/name: gerador-carga
+    app.kubernetes.io/part-of: oficina
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gerador-carga
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gerador-carga
+    spec:
+      containers:
+        - name: carga
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            # A senha deve casar com ADMIN_PASSWORD (k8s/20-secret-app.yaml).
+            - |
+              echo "Gerando carga contra http://oficina-app/auth/login ..."
+              while true; do
+                wget -q -O- \
+                  --header='Content-Type: application/json' \
+                  --post-data='{"username":"admin","password":"admin123"}' \
+                  http://oficina-app/auth/login >/dev/null 2>&1
+              done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi

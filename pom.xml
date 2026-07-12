@@ -8,7 +8,7 @@
     <artifactId>oficina-mvp</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>jar</packaging>
-    <name>Oficina MVP — Tech Challenge Fase 1</name>
+    <name>Oficina MVP — Tech Challenge 15SOAT</name>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -64,6 +64,12 @@
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
+        <!-- Mailer: notificação de status da OS por e-mail (fase 2) -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-mailer</artifactId>
         </dependency>
 
         <!-- OpenAPI / Swagger UI -->
@@ -219,9 +225,9 @@
                     <skip>${jacoco.skip}</skip>
                     <excludes>
                         <!-- DTOs / configs / classes geradas ficam fora do cálculo -->
-                        <exclude>**/dto/**</exclude>
+                        <exclude>**/dtos/**</exclude>
                         <exclude>**/config/**</exclude>
-                        <exclude>**/infrastructure/config/**</exclude>
+                        <exclude>**/external/config/**</exclude>
                         <exclude>**/generated/**</exclude>
                         <exclude>**/*Application*</exclude>
                         <exclude>**/package-info.class</exclude>
@@ -251,9 +257,10 @@
                             <rules>
                                 <rule>
                                     <element>PACKAGE</element>
+                                    <!-- Núcleo da Clean Architecture: entidades + casos de uso (por BC) -->
                                     <includes>
-                                        <include>br.com.fiap.techchallenge.oficina.domain.*</include>
-                                        <include>br.com.fiap.techchallenge.oficina.application.*</include>
+                                        <include>br.com.fiap.techchallenge.oficina.*.entities</include>
+                                        <include>br.com.fiap.techchallenge.oficina.*.usecases</include>
                                     </includes>
                                     <limits>
                                         <limit>

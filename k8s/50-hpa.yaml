@@ -1,0 +1,61 @@
+# =====================================================================
+# HorizontalPodAutoscaler — escala automática por CPU e memória
+# ---------------------------------------------------------------------
+# O HPA consulta o metrics-server (instalado pelo Terraform) a cada 15s
+# e ajusta o número de réplicas do Deployment entre min e max:
+#
+#   réplicas desejadas = réplicas atuais * (uso atual / alvo)
+#
+# A utilização é medida sobre o REQUEST do container (30-deployment.yaml):
+# - CPU: alvo 70% de 250m => sob carga (ex.: rajada de logins/BCrypt ou
+#   pico de aberturas de OS) o uso passa do alvo e novas réplicas sobem;
+# - memória: alvo 80% de 768Mi => rede de segurança contra vazamento;
+#   no dia a dia a JVM (heap limitado a 50%) fica abaixo disso.
+# =====================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: oficina-app
+  namespace: oficina
+  labels:
+    app.kubernetes.io/name: oficina-app
+    app.kubernetes.io/part-of: oficina
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: oficina-app
+  minReplicas: 2   # alta disponibilidade mínima (2 pods sempre no ar)
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  # Comportamento: sobe rápido para absorver picos, desce com calma
+  # (evita flapping).
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100      # pode dobrar o nº de pods...
+          periodSeconds: 15
+        - type: Pods
+          value: 2        # ...ou subir 2 pods, o que for maior
+          periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 1        # desce no máximo 1 pod a cada 30s
+          periodSeconds: 30

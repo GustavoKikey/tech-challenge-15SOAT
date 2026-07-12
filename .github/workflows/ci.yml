@@ -1,0 +1,101 @@
+# =====================================================================
+# CI — Integração Contínua
+# ---------------------------------------------------------------------
+# Roda em todo push de branch e em PRs para a main. Valida, em jobs
+# paralelos, as três frentes do repositório:
+#
+#   1. build-e-testes ... compila e executa os testes automatizados
+#                         (unitários via Surefire + integração via
+#                         Failsafe/Testcontainers) com o gate de
+#                         cobertura JaCoCo (>= 80% em entities/usecases);
+#   2. imagem-docker .... garante que o Dockerfile multi-stage builda;
+#   3. infraestrutura ... formata/valida o Terraform (infra/) e valida
+#                         os manifestos Kubernetes (k8s/) contra o
+#                         schema oficial com kubeconform.
+#
+# O deploy contínuo fica em cd.yml (push na main).
+# =====================================================================
+name: CI
+
+on:
+  push:
+    branches-ignore: [main] # na main quem roda é o CD (cd.yml), que repete os testes
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-e-testes:
+    name: Build + testes (unitários e integração)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 21 (Temurin) + cache do Maven
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # Docker 29+ só aceita API >= 1.44 e o docker-java embutido no
+      # Testcontainers 1.20.x pede uma versão mais antiga (recebe 400 e não
+      # detecta o Docker). O pin é inócuo em engines antigos (>= Docker 25)
+      # e mantém os ITs imunes a upgrades do Docker no runner.
+      - name: Compatibilidade Testcontainers × Docker 29+
+        run: echo "api.version=1.44" > ~/.docker-java.properties
+
+      # -DskipITs=false liga o Failsafe: os *IT.java sobem a aplicação
+      # com Postgres real via Testcontainers (Docker já vem no runner).
+      - name: Build, testes e gate de cobertura (mvn verify)
+        run: mvn -B -ntp verify -DskipITs=false
+
+      - name: Relatório de cobertura JaCoCo (artefato)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-jacoco
+          path: target/site/jacoco/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  imagem-docker:
+    name: Build da imagem Docker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: docker build (valida o Dockerfile multi-stage)
+        run: docker build -t oficina-mvp:ci .
+
+  infraestrutura:
+    name: Validação do Terraform e dos manifestos K8s
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: terraform fmt (estilo canônico)
+        run: terraform -chdir=infra fmt -check -recursive -diff
+
+      - name: terraform validate (sintaxe e coerência dos recursos)
+        run: |
+          terraform -chdir=infra init -backend=false -input=false
+          terraform -chdir=infra validate
+
+      - name: kubeconform (manifestos k8s/ contra o schema do Kubernetes)
+        run: |
+          docker run --rm -v "$PWD/k8s:/k8s:ro" ghcr.io/yannh/kubeconform:v0.6.7 \
+            -strict -summary /k8s
