@@ -1,0 +1,43 @@
+# =====================================================================
+# ConfigMap — configuração NÃO sensível da aplicação
+# ---------------------------------------------------------------------
+# Estes valores viram variáveis de ambiente no container (envFrom no
+# Deployment). O Quarkus resolve os placeholders ${...} do
+# application.properties a partir delas.
+#
+# Sensível (senhas, credenciais) NÃO fica aqui — vai nos Secrets
+# (20-secret-app.yaml / 21-secret-jwt.yaml e o Secret do banco criado
+# pelo Terraform).
+# =====================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oficina-app-config
+  namespace: oficina
+  labels:
+    app.kubernetes.io/name: oficina-app
+    app.kubernetes.io/part-of: oficina
+data:
+  # Banco: 'oficina-db' é o Service ClusterIP criado pelo Terraform
+  # (infra/database.tf) no mesmo namespace — DNS interno do cluster.
+  DB_URL: "jdbc:postgresql://oficina-db:5432/oficina"
+
+  # E-mail de notificação de status da OS.
+  # QUARKUS_MAILER_MOCK=true => o e-mail é LOGADO em vez de enviado
+  # (visível com 'kubectl logs' nos pods da aplicação).
+  # Para envio real: mude para "false" e preencha SMTP_* + Secret.
+  QUARKUS_MAILER_MOCK: "true"
+  MAIL_FROM: "oficina@techchallenge.local"
+  SMTP_HOST: "localhost"
+  SMTP_PORT: "587"
+
+  # Chaves RSA do JWT montadas via Secret (21-secret-jwt.yaml) em
+  # /etc/oficina/jwt — estas envs apontam o SmallRye JWT para os
+  # arquivos montados, em vez das chaves de dev do classpath.
+  MP_JWT_VERIFY_PUBLICKEY_LOCATION: "/etc/oficina/jwt/publicKey.pem"
+  SMALLRYE_JWT_SIGN_KEY_LOCATION: "/etc/oficina/jwt/privateKey.pem"
+
+  # JVM: limita o heap a 50% da memória do container (limit de 768Mi),
+  # deixando folga para metaspace/threads/nativo e mantendo o consumo
+  # total abaixo do alvo de 80% do HPA (evita flapping por memória).
+  JAVA_OPTS: "-XX:MaxRAMPercentage=50.0"

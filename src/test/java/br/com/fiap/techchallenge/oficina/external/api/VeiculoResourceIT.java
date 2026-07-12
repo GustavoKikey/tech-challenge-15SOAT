@@ -26,7 +26,7 @@ class VeiculoResourceIT {
 
     @Test
     void cadastraBuscaListaEAtualizaVeiculo() {
-        String clienteId = criarCliente("Carlos", "500.000.005-66");
+        String clienteId = criarCliente("Carlos", "500.000.006-47");
 
         String veiculoId = given().contentType("application/json")
                 .body(Map.of(

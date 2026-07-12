@@ -24,6 +24,6 @@ Thumbs.db
 build/
 out/
 
-# Privados (não versionar)
-docs
+# Privados
+docs/*
 .claude

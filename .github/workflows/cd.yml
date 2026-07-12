@@ -1,0 +1,181 @@
+# =====================================================================
+# CD — Entrega Contínua
+# ---------------------------------------------------------------------
+# Roda a cada push na main e executa, em sequência, tudo o que o
+# enunciado da fase 2 pede da pipeline:
+#
+#   1. testes ... build da aplicação + testes automatizados (mvn verify);
+#   2. imagem ... build da imagem Docker e publicação no GitHub
+#                 Container Registry (ghcr.io), com tag imutável por
+#                 commit + tag latest;
+#   3. deploy ... provisiona a infraestrutura com o MESMO Terraform de
+#                 infra/ (cluster Kubernetes kind + banco PostgreSQL +
+#                 metrics-server), carrega a imagem publicada no cluster,
+#                 aplica os manifestos k8s/ e roda um smoke test na API.
+#
+# Como a infraestrutura escolhida é um cluster LOCAL (kind — permitido
+# pelo enunciado: "local ou cloud"), o deploy acontece em um cluster
+# efêmero criado dentro do próprio runner: cada execução prova, do zero,
+# que IaC + banco + manifestos + imagem sobem íntegros. Para apontar
+# para um cluster gerenciado (EKS/GKE/AKS), basta substituir o passo de
+# provisionamento por um kubeconfig vindo de secrets — os passos de
+# 'kubectl apply' e smoke test permanecem os mesmos.
+# =====================================================================
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Nome que os manifestos k8s/ esperam (image + imagePullPolicy: Never)
+  IMAGEM_LOCAL: oficina-mvp:latest
+  CLUSTER: oficina
+  NAMESPACE: oficina
+
+jobs:
+  # ===================================================================
+  # 1) Build da aplicação + testes automatizados
+  # ===================================================================
+  testes:
+    name: Build + testes (mvn verify)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 21 (Temurin) + cache do Maven
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # Mesmo pin do CI: Docker 29+ exige API >= 1.44 (ver ci.yml).
+      - name: Compatibilidade Testcontainers × Docker 29+
+        run: echo "api.version=1.44" > ~/.docker-java.properties
+
+      - name: Build, testes (unitários + integração) e cobertura
+        run: mvn -B -ntp verify -DskipITs=false
+
+  # ===================================================================
+  # 2) Build da imagem Docker + publicação no GHCR
+  # ===================================================================
+  imagem:
+    name: Build e publicação da imagem Docker
+    needs: testes
+    runs-on: ubuntu-latest
+    outputs:
+      imagem: ${{ steps.meta.outputs.imagem }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Define a referência da imagem (ghcr.io exige minúsculas)
+        id: meta
+        run: |
+          echo "imagem=ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "imagem_latest=ghcr.io/${GITHUB_REPOSITORY,,}:latest"    >> "$GITHUB_OUTPUT"
+
+      - name: Login no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e push (tag do commit + latest)
+        run: |
+          docker build -t "${{ steps.meta.outputs.imagem }}" \
+                       -t "${{ steps.meta.outputs.imagem_latest }}" .
+          docker push "${{ steps.meta.outputs.imagem }}"
+          docker push "${{ steps.meta.outputs.imagem_latest }}"
+
+  # ===================================================================
+  # 3) Deploy: Terraform (cluster + banco) + manifestos K8s + smoke test
+  # ===================================================================
+  deploy:
+    name: Deploy no Kubernetes (Terraform + kubectl)
+    needs: imagem
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      # CLI do kind (mesma versão embutida no provider tehcyx/kind 0.11),
+      # usada apenas para o 'kind load docker-image'.
+      - name: kind CLI
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+          version: v0.29.0
+
+      - name: Provisiona a infraestrutura (cluster kind + PostgreSQL + metrics-server)
+        run: |
+          terraform -chdir=infra init -input=false
+          terraform -chdir=infra apply -auto-approve -input=false
+
+      # O provider kind grava o kubeconfig do cluster em infra/oficina-config.
+      - name: Aponta o kubectl para o cluster criado
+        run: |
+          KCFG="$GITHUB_WORKSPACE/infra/oficina-config"
+          if [ -f "$KCFG" ]; then
+            echo "KUBECONFIG=$KCFG" >> "$GITHUB_ENV"
+            export KUBECONFIG="$KCFG"
+          else
+            kubectl config use-context "kind-$CLUSTER"
+          fi
+          kubectl get nodes
+          kubectl -n "$NAMESPACE" get pods
+
+      - name: Carrega no cluster a imagem publicada no GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "${{ needs.imagem.outputs.imagem }}"
+          docker tag  "${{ needs.imagem.outputs.imagem }}" "$IMAGEM_LOCAL"
+          kind load docker-image "$IMAGEM_LOCAL" --name "$CLUSTER"
+
+      - name: Aplica os manifestos da aplicação (k8s/)
+        run: |
+          kubectl apply -f k8s/
+          kubectl -n "$NAMESPACE" rollout status deployment/oficina-app --timeout=300s
+
+      # A porta 8080 do runner é mapeada para o NodePort 30080 pelo
+      # extra_port_mappings do cluster (infra/cluster.tf).
+      - name: Smoke test (health + login + endpoint autenticado)
+        run: |
+          curl -fsS --retry 15 --retry-delay 2 --retry-all-errors http://localhost:8080/health
+          echo
+          TOKEN=$(curl -fsS -X POST http://localhost:8080/auth/login \
+                    -H 'Content-Type: application/json' \
+                    -d '{"username":"admin","password":"admin123"}' | jq -r .accessToken)
+          test -n "$TOKEN" && test "$TOKEN" != "null"
+          curl -fsS -H "Authorization: Bearer $TOKEN" http://localhost:8080/clientes >/dev/null
+          echo "Smoke test OK: health, login JWT e endpoint autenticado respondendo."
+
+      - name: Resumo do deploy
+        if: always()
+        run: |
+          {
+            echo "## Deploy — namespace \`$NAMESPACE\`"
+            echo
+            echo "Imagem: \`${{ needs.imagem.outputs.imagem }}\`"
+            echo
+            echo '```'
+            kubectl -n "$NAMESPACE" get deploy,pods,svc,hpa 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

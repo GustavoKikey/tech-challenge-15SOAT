@@ -30,9 +30,10 @@ COPY --from=build /workspace/target/quarkus-app/*.jar     /app/
 COPY --from=build /workspace/target/quarkus-app/app/      /app/app/
 COPY --from=build /workspace/target/quarkus-app/quarkus/  /app/quarkus/
 
-# Usuário não-root
-RUN addgroup -S app && adduser -S app -G app && chown -R app:app /app
-USER app
+# Usuário não-root com UID/GID fixos e USER numérico: o Kubernetes só
+# consegue validar 'runAsNonRoot' quando o USER da imagem é numérico.
+RUN addgroup -S -g 1001 app && adduser -S -u 1001 -G app app && chown -R app:app /app
+USER 1001
 
 EXPOSE 8080
 
