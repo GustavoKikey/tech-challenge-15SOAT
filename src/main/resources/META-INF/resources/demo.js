@@ -136,9 +136,9 @@ const PASSOS = [
     {
         grupo: "7 · Fase 2 — Listagem ordenada",
         titulo: "Exclusão lógica (filtro explícito)",
-        descricao: "As OS encerradas não sumiram do banco: com o filtro explícito de status elas aparecem. Troque para ENTREGUE ou FINALIZADA conforme a demo.",
+        descricao: "As OS encerradas não sumiram do banco: com o filtro explícito de status elas aparecem. ENTREGUE casa com o fim do fluxo guiado; para ver uma recusa, use o modo livre com ?status=CANCELADA.",
         metodo: "GET",
-        path: "/ordens-servico?status=CANCELADA"
+        path: "/ordens-servico?status=ENTREGUE"
     }
 ];
 

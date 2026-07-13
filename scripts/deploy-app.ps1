@@ -35,11 +35,19 @@ Write-Host "==> [2/4] Carregando a imagem no cluster kind '$Cluster'" -Foregroun
 kind load docker-image $Image --name $Cluster
 if ($LASTEXITCODE -ne 0) { throw "kind load falhou - o cluster existe? (cd infra; terraform apply)" }
 
-Write-Host "==> [3/4] Aplicando manifestos k8s/" -ForegroundColor Cyan
+Write-Host "==> [3/5] Aplicando manifestos k8s/" -ForegroundColor Cyan
 kubectl apply -f (Join-Path $raiz "k8s")
 if ($LASTEXITCODE -ne 0) { throw "kubectl apply falhou" }
 
-Write-Host "==> [4/4] Aguardando rollout do Deployment" -ForegroundColor Cyan
+# A tag e sempre a mesma (oficina-mvp:latest), entao o spec do Deployment
+# nao muda e o apply sozinho NAO recria os pods - eles continuariam com a
+# imagem antiga. O rollout restart forca pods novos, que ja nascem com a
+# imagem recem-carregada pelo kind load (rolling update, sem downtime).
+Write-Host "==> [4/5] Reiniciando os pods para usarem a imagem nova" -ForegroundColor Cyan
+kubectl -n $Namespace rollout restart deployment/oficina-app
+if ($LASTEXITCODE -ne 0) { throw "rollout restart falhou" }
+
+Write-Host "==> [5/5] Aguardando rollout do Deployment" -ForegroundColor Cyan
 kubectl -n $Namespace rollout status deployment/oficina-app --timeout=300s
 if ($LASTEXITCODE -ne 0) { throw "rollout nao concluiu - diagnostico: kubectl -n $Namespace get pods" }
 

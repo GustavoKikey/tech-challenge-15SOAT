@@ -21,7 +21,7 @@ Kubernetes (com escala automática), Infraestrutura como Código e pipeline de C
 | Terraform (cluster Kubernetes + **banco de dados**) | [`infra/`](infra/) |
 | Pipeline CI/CD | [`.github/workflows/`](.github/workflows/) (ver [CI/CD](#cicd)) |
 | Collection das APIs | [`openapi.yaml`](openapi.yaml) (versionada — importa no Postman/Insomnia/Swagger Editor) · Swagger UI em `http://localhost:8080/swagger` com a app rodando |
-| Vídeo demonstrativo (deploy, CI/CD, APIs, escalabilidade) | No arquivo |
+| Vídeo demonstrativo (deploy, CI/CD, APIs, escalabilidade) | https://drive.google.com/file/d/1Ydvl0G6CNienw6rxaxGgV3rgRhDJ-ivf/view?usp=sharing |
 
 ---
 
