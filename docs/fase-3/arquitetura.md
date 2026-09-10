@@ -18,6 +18,7 @@
 | **ADR** — padrão de comunicação | [adr/adr-004-padrao-de-comunicacao.md](adr/adr-004-padrao-de-comunicacao.md) |
 | **ADR** — uso de HPA | [adr/adr-003-uso-de-hpa.md](adr/adr-003-uso-de-hpa.md) |
 | **Justificativa formal do banco + ER + relacionamentos** | [modelagem-dados.md](modelagem-dados.md) |
+| **Dashboards e alertas** (volume de OS, tempo por status, erros de integração) | [observabilidade-newrelic.md](observabilidade-newrelic.md) |
 
 ## RFC ou ADR?
 

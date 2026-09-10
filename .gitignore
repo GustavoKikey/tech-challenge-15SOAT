@@ -38,6 +38,7 @@ docs/fase-3/*
 !docs/fase-3/modelagem-dados.md
 !docs/fase-3/diagramas-sequencia.md
 !docs/fase-3/diagrama-componentes.md
+!docs/fase-3/observabilidade-newrelic.md
 !docs/fase-3/rfc/
 !docs/fase-3/adr/
 
