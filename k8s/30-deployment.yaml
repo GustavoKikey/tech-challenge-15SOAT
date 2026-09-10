@@ -49,8 +49,13 @@ spec:
           # baixar uma imagem homônima do Docker Hub. Em cluster
           # gerenciado (EKS/GKE/AKS), trocar pela referência do registry
           # (ghcr.io/...) + policy IfNotPresent.
+          # A imagem é substituída no deploy: 'kubectl set image' aponta para
+          # a tag do ECR no EKS, ou para a imagem local no cluster kind.
           image: oficina-mvp:latest
-          imagePullPolicy: Never
+          # IfNotPresent atende os dois cenários: no kind a imagem já foi
+          # carregada por 'kind load', e no EKS ela é puxada do ECR na
+          # primeira vez. 'Never' quebra no EKS com ErrImageNeverPull.
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8080

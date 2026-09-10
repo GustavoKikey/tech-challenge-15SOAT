@@ -111,6 +111,18 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-opentelemetry</artifactId>
         </dependency>
+        <!--
+          O exportador OTLP precisa estar explícito no classpath: a extensão
+          acima traz a API e o SDK, mas não o exportador. Sem esta dependência
+          a aplicação sobe normalmente enquanto o exportador está desligado
+          (dev e teste) e falha no startup em produção com
+          "otel.traces.exporter set to otlp but opentelemetry-exporter-otlp
+          not found on classpath".
+        -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
         <!-- Logs estruturados em JSON (exigência: "logs estruturados (JSON)"). -->
         <dependency>
             <groupId>io.quarkus</groupId>
