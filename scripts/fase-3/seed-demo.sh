@@ -132,8 +132,20 @@ passo "$OS2" "/orcamento"
 passo "$OS2" "/orcamento/enviar"
 
 echo "==> OS 3 — Bruno Lima (a OS que a Ana NÃO pode ver)"
+# Esta PARA em EM_EXECUCAO de propósito, sem seguir até a entrega.
+#
+# StatusOS trata FINALIZADA, ENTREGUE e CANCELADA como encerramento lógico:
+# elas somem da listagem e da consulta por id. Uma OS entregue devolveria 404
+# para qualquer um — inclusive para o administrador —, e a demonstração de
+# isolamento entre clientes mostraria 404 no lugar do 403 que ela existe para
+# provar. Os dois códigos contam histórias diferentes: 404 é "não existe",
+# 403 é "existe e não é sua".
 OS3=$(abrir_os "390.533.447-05" "Bruno Lima" "bruno@exemplo.com" "XYZ4E56" "Fiat" "Argo" 2022 "$SRV_ALINHA")
-ciclo_completo "$OS3" 1
+passo "$OS3" "/diagnostico"
+sleep 1
+passo "$OS3" "/orcamento"
+passo "$OS3" "/orcamento/enviar"
+passo "$OS3" "/orcamento/aprovar"
 
 echo
 echo "======================================================================"
@@ -141,7 +153,7 @@ echo "  Pronto"
 echo "======================================================================"
 echo "  OS da Ana (entregue) ......: $OS1"
 echo "  OS da Ana (aguardando) ....: $OS2"
-echo "  OS do Bruno ...............: $OS3"
+echo "  OS do Bruno (em execução) .: $OS3"
 echo
 echo "  Para demonstrar o isolamento, use o id do Bruno com o token da Ana."
 echo "  A resposta tem que ser 403:"
