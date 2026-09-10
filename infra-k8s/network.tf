@@ -100,8 +100,28 @@ resource "aws_security_group" "banco" {
 
 resource "aws_vpc_security_group_ingress_rule" "banco_do_cluster" {
   security_group_id            = aws_security_group.banco.id
-  description                  = "PostgreSQL a partir dos nos do cluster"
+  description                  = "PostgreSQL a partir do SG adicional do control plane"
   referenced_security_group_id = aws_security_group.cluster.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+}
+
+# ---------------------------------------------------------------------
+# O SG que realmente vale para os pods é criado pelo EKS
+# ---------------------------------------------------------------------
+# O security group passado em vpc_config.security_group_ids é um SG
+# ADICIONAL do control plane. As instâncias do node group recebem o
+# "cluster security group" (eks-cluster-sg-*), que o EKS cria sozinho —
+# e é ele que aparece como origem quando um pod abre conexão com o RDS.
+#
+# Liberar apenas o SG customizado faz a aplicação subir e falhar no
+# datasource com "The connection attempt failed", sem nenhuma pista de
+# security group na mensagem.
+resource "aws_vpc_security_group_ingress_rule" "banco_do_cluster_eks" {
+  security_group_id            = aws_security_group.banco.id
+  description                  = "PostgreSQL a partir dos nos (cluster SG gerado pelo EKS)"
+  referenced_security_group_id = aws_eks_cluster.este.vpc_config[0].cluster_security_group_id
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"

@@ -299,8 +299,9 @@ mvn verify                      # unitários + gate de cobertura
 mvn verify -DskipITs=false      # + integração (exige Docker)
 ```
 
-Estado atual: **238 testes unitários + 54 de integração**, zero falhas, cobertura acima
-do gate. A Lambda tem **14 testes** próprios (`cd lambda-auth && npm test`).
+A suíte tem **238 testes unitários e 54 de integração**, com gate de cobertura que
+falha o build abaixo de 80% no núcleo. A Function tem **14 testes** próprios
+(`cd lambda-auth && npm test`).
 
 Dois testes merecem destaque porque provam comportamento, não implementação:
 
@@ -314,7 +315,7 @@ Dois testes merecem destaque porque provam comportamento, não implementação:
 
 ## Deploy
 
-### Cluster local (kind) — herdado da fase 2
+### Cluster local (kind)
 
 ```bash
 cd infra && terraform apply     # cluster + Postgres + metrics-server
@@ -373,7 +374,7 @@ da nuvem.
 ```
 ├── src/                      aplicação Quarkus (4 bounded contexts)
 ├── k8s/                      manifestos: Deployment, Service, ConfigMap, Secrets, HPA, PDB
-├── infra/                    Terraform do cluster kind (fase 2)
+├── infra/                    Terraform do cluster kind (desenvolvimento local)
 ├── lambda-auth/              repositório 1 — Function de autenticação
 ├── infra-k8s/                repositório 2 — rede e cluster EKS
 ├── infra-database/           repositório 3 — RDS PostgreSQL

@@ -35,8 +35,8 @@ no repo 2, que aceita 5432 apenas do cluster e da Lambda.
 
 ## Justificativa da escolha
 
-PostgreSQL gerenciado, com o raciocínio completo em `docs/fase-3/rfc/rfc-002-escolha-do-banco.md`
-e o modelo em `docs/fase-3/modelagem-dados.md`. Em resumo: o domínio exige transação
+PostgreSQL gerenciado, com o raciocínio completo em [RFC 002](https://github.com/GustavoKikey/tech-challenge-15SOAT/blob/main/docs/fase-3/rfc/rfc-002-escolha-do-banco.md)
+e o modelo em [modelagem de dados](https://github.com/GustavoKikey/tech-challenge-15SOAT/blob/main/docs/fase-3/modelagem-dados.md). Em resumo: o domínio exige transação
 ACID cruzando tabelas (aprovar orçamento baixa estoque), é fortemente relacional, e o
 código já usa recursos específicos do Postgres — `NUMERIC` exato para dinheiro,
 `TIMESTAMPTZ`, `UUID` nativo, `CHECK` constraints e índice parcial.
@@ -83,5 +83,5 @@ aws secretsmanager get-secret-value \
 
 ## Diagrama
 
-Ver `docs/fase-3/diagrama-componentes.md` — este repositório provisiona a caixa
-**RDS PostgreSQL**. O ER está em `docs/fase-3/modelagem-dados.md`.
+Ver [diagrama de componentes](https://github.com/GustavoKikey/tech-challenge-15SOAT/blob/main/docs/fase-3/diagrama-componentes.md) — este repositório provisiona a caixa
+**RDS PostgreSQL**. O ER está em [modelagem de dados](https://github.com/GustavoKikey/tech-challenge-15SOAT/blob/main/docs/fase-3/modelagem-dados.md).

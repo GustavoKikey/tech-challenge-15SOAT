@@ -1,7 +1,6 @@
-# Scripts da fase 3 — kit de pouso no Learner Lab
+# Scripts de operação da infraestrutura
 
-Sequência para ligar o lab e provisionar tudo, sem descobrir limitação no meio de um
-`terraform apply` pela metade.
+Sequência para provisionar, verificar e remover a infraestrutura da fase 3 na AWS.
 
 ---
 

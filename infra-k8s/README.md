@@ -29,10 +29,10 @@ Terraform ~> 1.9 · AWS provider ~> 5.70 · Amazon EKS · GitHub Actions
 | Addon metrics-server | Pré-requisito do HPA — sem ele o HPA fica em `unknown` |
 | 6 parâmetros no SSM | O contrato com os outros repos |
 
-**A VPC não é criada.** Usamos a default. Uma VPC própria com subnets privadas exigiria
-NAT Gateway (~US$ 32/mês) ou VPC endpoints (~US$ 7/mês cada), o que consome o crédito de
-US$ 50 do Learner Lab sem ganho pedagógico — o isolamento real vem dos security groups.
-Ver [ADR 004](../docs/fase-3/adr/adr-004-padrao-de-comunicacao.md), §3.
+**A VPC não é criada** — a default é reaproveitada. Subnets privadas exigiriam NAT
+Gateway ou VPC endpoints, ambos cobrados por hora, e o isolamento que importa aqui vem
+dos security groups: o banco só aceita conexão dos grupos do cluster e da Function.
+Trade-off registrado em [ADR 004](https://github.com/GustavoKikey/tech-challenge-15SOAT/blob/main/docs/fase-3/adr/adr-004-padrao-de-comunicacao.md), §3.
 
 ## Contrato publicado no SSM
 
@@ -51,7 +51,7 @@ O bucket S3 e a tabela DynamoDB que guardam e travam o state precisam existir an
 primeiro `terraform init`. São criados uma única vez, com AWS CLI:
 
 ```bash
-bash scripts/fase-3/01-bootstrap.sh SEU-SUFIXO-UNICO
+bash scripts/fase-3/01-bootstrap.sh SEU-SUFIXO-UNICO   # no repositório da aplicação
 ```
 
 Feito com CLI em vez de Terraform de propósito: é este passo que cria o backend onde o
@@ -92,10 +92,11 @@ Secrets necessários: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION
 > `AWS_SESSION_TOKEN` precisa ser renovado nos secrets a cada sessão. Numa conta
 > própria, trocar por OIDC e remover as três chaves.
 
-## IAM no AWS Academy Learner Lab
+## IAM em ambientes com criação de role restrita
 
-O lab não permite criar IAM roles, mas provisiona roles prontas para o EKS. O
-Terraform as descobre por regex, já que o nome carrega um sufixo aleatório por conta:
+Em ambientes onde criar IAM roles não é permitido — contas gerenciadas, laboratórios
+acadêmicos — o Terraform descobre as roles já provisionadas por padrão de nome, já que
+elas carregam sufixo aleatório por conta:
 
 | Role | Uso |
 | --- | --- |
@@ -103,12 +104,12 @@ Terraform as descobre por regex, já que o nome carrega um sufixo aleatório por
 | `...LabEksNodeRole-...` | nós — traz a `AmazonEKS_CNI_Policy` |
 
 A `AmazonEKS_CNI_Policy` é o detalhe que importa: sem ela o VPC CNI não atribui IP aos
-pods e os nós ficam `NotReady`, com um erro que não menciona IAM. A `LabRole` genérica
-não a possui, por isso a role dedicada tem prioridade.
+pods e os nós ficam `NotReady`, com um erro que não menciona IAM em lugar nenhum. Roles
+genéricas costumam não tê-la, por isso a role dedicada tem prioridade na descoberta.
 
 Numa conta AWS comum, informe as roles em `role_arn_cluster` e `role_arn_nos`.
 
 ## Diagrama
 
-Ver `docs/fase-3/diagrama-componentes.md` — este repositório provisiona a caixa
+Ver [diagrama de componentes](https://github.com/GustavoKikey/tech-challenge-15SOAT/blob/main/docs/fase-3/diagrama-componentes.md) — este repositório provisiona a caixa
 **Amazon EKS** e os security groups dentro de **VPC default**.
