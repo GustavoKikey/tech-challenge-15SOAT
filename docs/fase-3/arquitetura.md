@@ -54,25 +54,6 @@ Os dois formatos aparecem porque servem a coisas diferentes, e o enunciado pede 
 | [RFC 001](rfc/rfc-001-escolha-da-nuvem.md) | Direção da fase: escolha da nuvem, restrições e riscos |
 | [../ARQUITETURA.md](../ARQUITETURA.md) | Clean Architecture da aplicação (fase 2, ainda vigente) |
 
-## Estado da arquitetura documentada
-
-Nem tudo aqui está implementado — os documentos marcam a diferença, mas vale o resumo:
-
-| Componente | Estado |
-| --- | --- |
-| Autenticação por CPF (Lambda + app) | ✅ implementado, testado, interoperabilidade verificada |
-| Autorização por propriedade da OS | ✅ 7 ITs |
-| Modelo de dados (`V7`) | ✅ aplicado e validado contra Postgres real |
-| Observabilidade da aplicação | ✅ validada em cluster |
-| API Gateway | ❌ depende da AWS |
-| EKS, RDS, Terraform de nuvem | ❌ depende da AWS e da [restrição de IAM do Learner Lab](rfc/rfc-001-escolha-da-nuvem.md) |
-| New Relic conectado, dashboards, alertas | ❌ depende da license key |
-
-> ⚠️ O [diagrama de componentes](diagrama-componentes.md) mostra **EKS**. O AWS Academy
-> Learner Lab não permite criar IAM roles, e o EKS exige uma role de cluster
-> ([RFC 001](rfc/rfc-001-escolha-da-nuvem.md), §5). Se a role existente não servir, a
-> alternativa é k3s em EC2 provisionado por Terraform — só a caixa do cluster muda.
-
 ## Escopo desta pasta
 
 Os documentos listados acima são os **entregáveis avaliados** e estão versionados.

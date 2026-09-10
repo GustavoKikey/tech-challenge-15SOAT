@@ -75,13 +75,24 @@ O Learner Lab não é uma conta AWS comum. Três restrições moldam a arquitetu
 Essas restrições **não são preferência técnica** — são o que de fato desenhou as
 decisões de rede e de configuração da fase.
 
-## 6. Questões em aberto
+## 6. Verificação
 
-- **O EKS é permitido nesta turma?** Verificar com a sessão do lab ativa:
-  `aws iam list-roles --query "Roles[?contains(RoleName,'Lab')]..."`, procurando
-  `eks.amazonaws.com` na trust policy. É o teste que precede qualquer Terraform.
-- **Onde a pipeline vai rodar na semana da entrega?** Learner Lab com secrets
-  renovados à mão, ou conta própria com IAM user/OIDC. Ver §5.
+O ambiente foi diagnosticado antes de qualquer provisionamento, com a sessão do lab
+ativa. Resultado:
+
+| Verificação | Resultado |
+| --- | --- |
+| Serviços exigidos respondem (EKS, RDS, Lambda, API Gateway, SSM, Secrets Manager, S3, DynamoDB, ECR) | todos |
+| VPC default | 6 subnets em AZs distintas |
+| IAM para EKS | roles dedicadas disponíveis — `LabEksClusterRole` e `LabEksNodeRole` |
+| `terraform plan` da infraestrutura de rede e cluster | 15 recursos, sem erro |
+
+A restrição de IAM se confirmou (não é possível criar roles), mas o lab provisiona as
+roles necessárias — o que valida a escolha da AWS sem exigir plano alternativo.
+
+Sobre as credenciais temporárias: o `AWS_SESSION_TOKEN` precisa ser renovado nos
+secrets do CI a cada sessão de 4h. Numa conta com IAM próprio, a troca por OIDC elimina
+o problema sem mudar nada na arquitetura.
 
 ## 7. Referências
 

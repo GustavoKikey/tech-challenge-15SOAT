@@ -170,14 +170,3 @@ entre desativar um cliente e o acesso dele cessar de fato.
 
 Ordem de aplicação: **2 → 3 → 1 → 4**.
 
-## 5. O que já existe e o que falta
-
-| Componente | Estado |
-| --- | --- |
-| App Quarkus com autenticação por CPF | ✅ implementado e testado (238 unitários + 54 ITs) |
-| Lambda (código) | ✅ implementada e testada (14 testes); interoperabilidade com a app verificada |
-| Observabilidade na aplicação | ✅ validada no cluster kind |
-| Modelo de dados (`V7`) | ✅ aplicado e validado |
-| API Gateway | ❌ depende da AWS |
-| EKS, RDS, Terraform da nuvem | ❌ depende da AWS — e da restrição de IAM do Learner Lab |
-| New Relic conectado, dashboards e alertas | ❌ depende da license key |

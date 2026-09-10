@@ -3,9 +3,6 @@
 Infraestrutura de **rede e cluster Kubernetes** da oficina — repositório 2 dos 4 do
 Tech Challenge Fase 3 (15SOAT).
 
-> Esta pasta é o conteúdo do repositório `oficina-infra-k8s`. Vive junto da aplicação
-> enquanto a separação dos 4 repositórios não acontece.
-
 ## Propósito
 
 **Primeiro da cadeia.** Cria os security groups sobre a VPC default e o cluster EKS, e
@@ -95,20 +92,21 @@ Secrets necessários: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION
 > `AWS_SESSION_TOKEN` precisa ser renovado nos secrets a cada sessão. Numa conta
 > própria, trocar por OIDC e remover as três chaves.
 
-## ⚠️ Risco conhecido — EKS no Learner Lab
+## IAM no AWS Academy Learner Lab
 
-O EKS exige uma IAM role de cluster, e o Learner Lab **não permite criar roles**. Este
-código reusa a `LabRole`. Se ela não tiver trust policy para `eks.amazonaws.com`, o
-apply falha.
+O lab não permite criar IAM roles, mas provisiona roles prontas para o EKS. O
+Terraform as descobre por regex, já que o nome carrega um sufixo aleatório por conta:
 
-Verificar antes, com a sessão do lab ativa:
+| Role | Uso |
+| --- | --- |
+| `...LabEksClusterRole-...` | control plane |
+| `...LabEksNodeRole-...` | nós — traz a `AmazonEKS_CNI_Policy` |
 
-```bash
-aws iam list-roles --query "Roles[?contains(RoleName,'Lab')].[RoleName,AssumeRolePolicyDocument]" --output json
-```
+A `AmazonEKS_CNI_Policy` é o detalhe que importa: sem ela o VPC CNI não atribui IP aos
+pods e os nós ficam `NotReady`, com um erro que não menciona IAM. A `LabRole` genérica
+não a possui, por isso a role dedicada tem prioridade.
 
-Plano B: cluster k3s em EC2 provisionado por Terraform. Ver
-[RFC 001](../docs/fase-3/rfc/rfc-001-escolha-da-nuvem.md), §5.
+Numa conta AWS comum, informe as roles em `role_arn_cluster` e `role_arn_nos`.
 
 ## Diagrama
 

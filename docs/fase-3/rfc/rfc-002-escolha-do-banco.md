@@ -102,7 +102,7 @@ parcial.
 | Testes | Nenhum — Testcontainers continua subindo Postgres local |
 | Latência | Aumenta: sai de `localhost` no cluster para RDS na mesma VPC. Milissegundos, aceitável |
 
-## 7. Questões em aberto
+## 7. Evolução prevista
 
 - **`db.t3.micro` aguenta a demonstração de HPA?** Cinco réplicas abrindo conexões
   simultâneas contra a menor instância. Se aparecer saturação, subir para

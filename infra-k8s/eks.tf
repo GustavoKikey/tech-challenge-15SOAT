@@ -21,7 +21,7 @@
 # VPC CNI não atribui IP aos pods e os nós ficam NotReady, com um erro que
 # não menciona IAM em lugar nenhum. Por isso a role dedicada tem prioridade.
 #
-# Verificado na conta 927712842908 em 2026-09-10.
+# Verificado na conta do projeto em 2026-09-10.
 
 data "aws_iam_roles" "eks_cluster" {
   name_regex = ".*LabEksClusterRole.*"

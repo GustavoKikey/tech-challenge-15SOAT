@@ -3,9 +3,6 @@
 Function Serverless de **autenticação por CPF** da oficina — repositório 1 dos 4 do
 Tech Challenge Fase 3 (15SOAT).
 
-> Esta pasta é o conteúdo do repositório `oficina-auth-lambda`. Vive junto da
-> aplicação enquanto a separação dos 4 repositórios não acontece.
-
 ## O que faz
 
 Recebe um CPF, decide se aquele cliente pode entrar, e devolve um JWT que as APIs
@@ -161,9 +158,3 @@ dar. Gateway ou Lambda quebrados devolveriam 500/502 e falhariam o job.
 Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`,
 `TF_STATE_BUCKET`, `TF_LOCK_TABLE`, `JWT_PRIVATE_KEY_BASE64`.
 
-## Pendente
-
-- [ ] Aplicar na AWS (depende do acesso ao Learner Lab)
-- [ ] Chave privada saindo do repositório da aplicação e indo para o Secrets Manager
-      — a atual está versionada e deve ser **rotacionada** ([RFC 003](../docs/fase-3/rfc/rfc-003-estrategia-de-autenticacao.md), §5)
-- [ ] Instrumentação OTel para o New Relic

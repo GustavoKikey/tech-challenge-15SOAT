@@ -123,7 +123,7 @@ ITs no total.
 | Chave privada em dois lugares | App (tokens administrativos) e Lambda (tokens de cliente). Mitigação: distribuição por Secrets Manager. |
 | Segredo em variável de ambiente da Lambda | Visível a quem tem acesso ao console. A alternativa (Secrets Manager em runtime) exigiria NAT ou VPC endpoint pago — [ADR 004](../adr/adr-004-padrao-de-comunicacao.md), §3. |
 
-## 6. Questões em aberto
+## 6. Evolução prevista
 
 - **Renovação do token.** Hoje o cliente reautentica com o CPF quando expira. Refresh
   token traria complexidade de armazenamento e revogação; avaliar só se a fricção de

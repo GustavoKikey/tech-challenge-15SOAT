@@ -3,9 +3,6 @@
 Infraestrutura do **banco de dados gerenciado** — repositório 3 dos 4 do Tech Challenge
 Fase 3 (15SOAT).
 
-> Esta pasta é o conteúdo do repositório `oficina-infra-database`. Vive junto da
-> aplicação enquanto a separação dos 4 repositórios não acontece.
-
 ## Propósito
 
 **Segundo da cadeia.** Consome a rede publicada pelo repo 2 e provisiona o RDS

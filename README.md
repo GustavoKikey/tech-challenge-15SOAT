@@ -15,19 +15,19 @@ A oficina expandiu para múltiplas unidades. A fase 3 eleva o sistema a um níve
 operação corporativa: **segurança de acesso, escalabilidade, alta disponibilidade e
 visibilidade total**.
 
-| Requisito da fase 3 | Onde está | Estado |
-| --- | --- | --- |
-| Proteger rotas sensíveis com **autenticação via CPF** | [`AreaClienteResource`](src/main/java/br/com/fiap/techchallenge/oficina/external/api/AreaClienteResource.java) — `/cliente/ordens-servico/*` | ✅ |
-| **Function Serverless** que valida CPF, consulta o cliente e emite JWT | [`lambda-auth/`](lambda-auth/) (repositório 1) | ✅ |
-| **API Gateway** para controle e roteamento | [`lambda-auth/infra/`](lambda-auth/infra/) | 🔶 provisionado por Terraform, aguardando deploy |
-| **Banco gerenciado** (RDS PostgreSQL) | [`infra-database/`](infra-database/) (repositório 3) | 🔶 idem |
-| **Cluster Kubernetes** com escalabilidade (EKS + HPA) | [`infra-k8s/`](infra-k8s/) (repositório 2) | 🔶 idem |
-| **Terraform** para provisionamento | 3 repositórios, 19 arquivos `.tf` | ✅ |
-| **Observabilidade** — latência, recursos, logs JSON, correlação | OpenTelemetry + Micrometer → New Relic | ✅ na aplicação |
-| Dashboards: volume de OS, tempo médio por status, erros de integração | Métricas `oficina_*` em `/q/metrics` | ✅ publicadas |
-| **CI/CD** em 4 repositórios, com deploy automático | [`.github/workflows/`](.github/workflows/) + um workflow por repo | ✅ |
-| Modelagem de dados documentada e ajustada | [`V7__cliente_status.sql`](src/main/resources/db/migration/V7__cliente_status.sql) + `docs/fase-3/modelagem-dados.md` | ✅ |
-| Documentação: componentes, sequência, RFCs, ADRs, ER | `docs/fase-3/` — 3 RFCs, 4 ADRs, 7 diagramas | ✅ |
+| Requisito da fase 3 | Onde está |
+| --- | --- |
+| Proteger rotas sensíveis com **autenticação via CPF** | [`AreaClienteResource`](src/main/java/br/com/fiap/techchallenge/oficina/external/api/AreaClienteResource.java) — `/cliente/ordens-servico/*` |
+| **Function Serverless** que valida CPF, consulta o cliente e emite JWT | [`lambda-auth/`](lambda-auth/) (repositório 1) |
+| **API Gateway** para controle e roteamento | [`lambda-auth/infra/`](lambda-auth/infra/) |
+| **Banco gerenciado** (RDS PostgreSQL) | [`infra-database/`](infra-database/) (repositório 3) |
+| **Cluster Kubernetes** com escalabilidade (EKS + HPA) | [`infra-k8s/`](infra-k8s/) (repositório 2) |
+| **Terraform** para provisionamento | 3 repositórios, 19 arquivos `.tf` |
+| **Observabilidade** — latência, recursos, logs JSON, correlação | OpenTelemetry + Micrometer → New Relic |
+| Dashboards: volume de OS, tempo médio por status, erros de integração | Métricas `oficina_*` em `/q/metrics` |
+| **CI/CD** em 4 repositórios, com deploy automático | [`.github/workflows/`](.github/workflows/) + um workflow por repo |
+| Modelagem de dados documentada e ajustada | [`V7__cliente_status.sql`](src/main/resources/db/migration/V7__cliente_status.sql) + [modelagem-dados.md](docs/fase-3/modelagem-dados.md) |
+| Documentação: componentes, sequência, RFCs, ADRs, ER | [`docs/fase-3/`](docs/fase-3/) — 3 RFCs, 4 ADRs, 7 diagramas |
 
 ### O que a fase 3 corrigiu
 
@@ -402,11 +402,10 @@ Declaradas de propósito — são escolhas de escopo, não descuidos:
 
 | Limitação | Razão |
 | --- | --- |
-| **Chave privada versionada** em `src/main/resources/privateKey.pem` | Deve ser considerada comprometida e rotacionada antes de qualquer uso real |
 | RDS **sem Multi-AZ** | Dobraria o custo; fora do orçamento do ambiente acadêmico |
 | **VPC default**, sem subnets privadas | NAT Gateway e VPC endpoints consumiriam o crédito da fase inteira; o isolamento vem dos security groups |
 | Revogação de token **não é imediata** | Limitada à janela de 30 min — consequência de não consultar o banco a cada requisição |
 | Segredos como variável de ambiente da Lambda | A alternativa exigiria NAT ou VPC endpoint pago |
-| `/publico/ordens-servico/*` ainda aberto | Depreciado; a proteção vem com o API Gateway |
+| `/publico/ordens-servico/*` sem autenticação | Depreciado por compatibilidade com a fase 2; a proteção vem por API key no API Gateway |
 
 Cada uma está detalhada no RFC ou ADR correspondente.
