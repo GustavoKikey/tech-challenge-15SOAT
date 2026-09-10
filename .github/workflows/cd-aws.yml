@@ -162,7 +162,22 @@ jobs:
 
       - name: Aplica os manifestos
         run: |
+          # A lista de IPs liberados no balanceador é guardada ANTES do apply
+          # e reposta depois. O manifesto a declara fechada, então um apply
+          # trancaria do lado de fora quem estivesse usando o ambiente — e o
+          # deploy não deve reabrir o que alguém fechou, nem fechar o que
+          # alguém abriu. Em cluster novo não há nada para preservar, e o
+          # padrão fechado do manifesto prevalece.
+          liberados=$(kubectl -n "$NAMESPACE" get svc oficina-app \
+            -o jsonpath='{.spec.loadBalancerSourceRanges}' 2>/dev/null || echo "")
+
           kubectl apply -f k8s/
+
+          if [ -n "$liberados" ] && [ "$liberados" != '["127.0.0.1/32"]' ]; then
+            kubectl -n "$NAMESPACE" patch service oficina-app --type merge \
+              -p "{\"spec\":{\"loadBalancerSourceRanges\":$liberados}}"
+            echo "Lista de IPs do balanceador preservada: $liberados"
+          fi
           # Os patches vêm DEPOIS do apply, e não antes: 'kubectl apply'
           # reescreve todo campo presente no manifesto versionado, então um
           # patch aplicado antes seria silenciosamente desfeito aqui.
