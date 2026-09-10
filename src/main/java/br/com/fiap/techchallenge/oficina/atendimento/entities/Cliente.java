@@ -18,28 +18,51 @@ public class Cliente {
     private String nome;
     private String email;
     private String telefone;
+    private boolean ativo;
 
-    private Cliente(ClienteId id, String nome, Documento documento, String email, String telefone) {
+    private Cliente(ClienteId id, String nome, Documento documento, String email,
+                    String telefone, boolean ativo) {
         this.id = Objects.requireNonNull(id, "id");
         this.documento = Objects.requireNonNull(documento, "documento");
         this.nome = exigirNome(nome);
         this.email = email;
         this.telefone = telefone;
+        this.ativo = ativo;
     }
 
-    /** Cria um novo cliente (gera id). */
+    /** Cria um novo cliente (gera id). Nasce ativo: pode autenticar e abrir OS. */
     public static Cliente novo(String nome, Documento documento, String email, String telefone) {
-        return new Cliente(ClienteId.novo(), nome, documento, email, telefone);
+        return new Cliente(ClienteId.novo(), nome, documento, email, telefone, true);
     }
 
-    /** Reidrata um cliente já persistido (não regera id). Uso restrito ao mapper. */
+    /**
+     * Reidrata um cliente já persistido (não regera id). Uso restrito ao mapper.
+     *
+     * <p>{@code ativo} é explícito de propósito: um default implícito faria um cliente
+     * desativado voltar como ativo se alguém esquecesse de mapear a coluna — falha
+     * silenciosa de segurança, já que é esse campo que autoriza a emissão do token.
+     */
     public static Cliente reconstituir(ClienteId id, String nome, Documento documento,
-                                       String email, String telefone) {
-        return new Cliente(id, nome, documento, email, telefone);
+                                       String email, String telefone, boolean ativo) {
+        return new Cliente(id, nome, documento, email, telefone, ativo);
     }
 
     public void renomear(String novoNome) {
         this.nome = exigirNome(novoNome);
+    }
+
+    /**
+     * Desativa o cliente. A Function Serverless de autenticação recusa emitir token
+     * para cliente inativo; tokens já emitidos continuam válidos até expirarem
+     * (ver ADR 001 — janela de 30 min).
+     */
+    public void desativar() {
+        this.ativo = false;
+    }
+
+    /** Reabilita um cliente desativado. */
+    public void ativar() {
+        this.ativo = true;
     }
 
     public void alterarContato(String email, String telefone) {
@@ -59,6 +82,7 @@ public class Cliente {
     public Documento documento()    { return documento; }
     public String email()           { return email; }
     public String telefone()        { return telefone; }
+    public boolean ativo()          { return ativo; }
 
     @Override
     public boolean equals(Object o) {

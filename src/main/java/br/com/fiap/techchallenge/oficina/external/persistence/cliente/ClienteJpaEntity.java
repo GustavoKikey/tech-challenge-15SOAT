@@ -30,6 +30,10 @@ public class ClienteJpaEntity {
     @Column(name = "telefone", length = 30)
     public String telefone;
 
+    /** Habilita a autenticação por CPF na Lambda (V7__cliente_status.sql). */
+    @Column(name = "ativo", nullable = false)
+    public boolean ativo = true;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     public OffsetDateTime createdAt;
 

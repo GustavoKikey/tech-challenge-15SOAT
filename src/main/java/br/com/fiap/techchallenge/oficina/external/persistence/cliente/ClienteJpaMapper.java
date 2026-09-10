@@ -15,6 +15,7 @@ final class ClienteJpaMapper {
         entity.documento = cliente.documento().numero();
         entity.email = cliente.email();
         entity.telefone = cliente.telefone();
+        entity.ativo = cliente.ativo();
         return entity;
     }
 
@@ -24,7 +25,8 @@ final class ClienteJpaMapper {
                 entity.nome,
                 Documento.de(entity.documento),
                 entity.email,
-                entity.telefone
+                entity.telefone,
+                entity.ativo
         );
     }
 }

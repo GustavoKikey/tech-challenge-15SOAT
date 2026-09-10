@@ -25,5 +25,27 @@ build/
 out/
 
 # Privados
+# docs/ é material interno. As exceções abaixo publicam APENAS os
+# entregáveis avaliados da fase 3 — o Git não consegue "designorar" um
+# arquivo dentro de um diretório ignorado, por isso o diretório precisa
+# ser liberado antes de o conteúdo dele voltar a ser ignorado.
 docs/*
+!docs/ARQUITETURA.md
+
+!docs/fase-3/
+docs/fase-3/*
+!docs/fase-3/arquitetura.md
+!docs/fase-3/modelagem-dados.md
+!docs/fase-3/diagramas-sequencia.md
+!docs/fase-3/diagrama-componentes.md
+!docs/fase-3/rfc/
+!docs/fase-3/adr/
+
 .claude
+lambda-auth/node_modules/
+infra-k8s/.terraform/
+infra-database/.terraform/
+lambda-auth/infra/.terraform/
+*.tfstate
+*.tfstate.*
+scripts/fase-3/.backend.env

@@ -49,8 +49,13 @@ spec:
           # baixar uma imagem homônima do Docker Hub. Em cluster
           # gerenciado (EKS/GKE/AKS), trocar pela referência do registry
           # (ghcr.io/...) + policy IfNotPresent.
+          # A imagem é substituída no deploy: 'kubectl set image' aponta para
+          # a tag do ECR no EKS, ou para a imagem local no cluster kind.
           image: oficina-mvp:latest
-          imagePullPolicy: Never
+          # IfNotPresent atende os dois cenários: no kind a imagem já foi
+          # carregada por 'kind load', e no EKS ela é puxada do ECR na
+          # primeira vez. 'Never' quebra no EKS com ErrImageNeverPull.
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8080
@@ -72,6 +77,17 @@ spec:
                 secretKeyRef:
                   name: oficina-db-credentials
                   key: password
+            # License key do New Relic. O Secret é criado fora do Git:
+            #   kubectl -n oficina create secret generic oficina-newrelic \
+            #     --from-literal=license-key=SUA_CHAVE
+            # optional: true faz a app subir normalmente sem a chave — os
+            # traces simplesmente não são exportados, em vez de travar o pod.
+            - name: NEW_RELIC_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: oficina-newrelic
+                  key: license-key
+                  optional: true
           volumeMounts:
             - name: jwt-keys
               mountPath: /etc/oficina/jwt

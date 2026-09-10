@@ -1,5 +1,6 @@
 package br.com.fiap.techchallenge.oficina.external.api.exception;
 
+import br.com.fiap.techchallenge.oficina.atendimento.entities.AcessoNegadoAOrdemServicoException;
 import br.com.fiap.techchallenge.oficina.atendimento.entities.ClienteJaCadastradoException;
 import br.com.fiap.techchallenge.oficina.atendimento.entities.ClienteNaoEncontradoException;
 import br.com.fiap.techchallenge.oficina.atendimento.entities.ItemOSNaoEncontradoException;
@@ -53,6 +54,9 @@ public class DomainExceptionMapper implements ExceptionMapper<DomainException> {
                 || ex instanceof OrcamentoJaGeradoException
                 || ex instanceof UsernameJaCadastradoException) {
             return Response.Status.CONFLICT.getStatusCode();
+        }
+        if (ex instanceof AcessoNegadoAOrdemServicoException) {
+            return Response.Status.FORBIDDEN.getStatusCode();
         }
         if (ex instanceof ClienteNaoEncontradoException
                 || ex instanceof VeiculoNaoEncontradoException

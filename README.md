@@ -1,58 +1,181 @@
-# Oficina MVP — Tech Challenge 15SOAT (FIAP) · Fases 1 e 2
+# Oficina — Tech Challenge 15SOAT (FIAP) · Fase 3
 
-Sistema de gestão de uma oficina mecânica: cadastro de clientes, veículos e serviços; controle de estoque de peças; e fluxo de Ordem de Serviço (orçamento → execução → entrega) com indicador de tempo médio de execução.
+Sistema de gestão de oficina mecânica: clientes, veículos, serviços, estoque de peças e
+o ciclo completo da Ordem de Serviço — orçamento, execução e entrega.
+
+Este repositório é a **aplicação principal** (repositório 4 de 4). Na fase 3 ela ganhou
+autenticação de cliente por CPF, observabilidade de ponta a ponta e passou a rodar em
+cluster gerenciado na nuvem.
 
 ---
 
-## Fase 2 — objetivos e o que foi entregue
+## Fase 3 — operação corporativa
 
-Com o crescimento da oficina, a fase 2 evolui a aplicação da fase 1 para garantir
-**qualidade, resiliência e escalabilidade**: refatoração para Clean Architecture
-canônica, novas APIs do ciclo da OS, containerização revisada, orquestração com
-Kubernetes (com escala automática), Infraestrutura como Código e pipeline de CI/CD.
+A oficina expandiu para múltiplas unidades. A fase 3 eleva o sistema a um nível de
+operação corporativa: **segurança de acesso, escalabilidade, alta disponibilidade e
+visibilidade total**.
 
-| Requisito da fase 2 | Onde está |
+| Requisito da fase 3 | Onde está |
 | --- | --- |
-| Refatoração Clean Architecture + Clean Code | `src/` (detalhes em [docs/ARQUITETURA.md](docs/ARQUITETURA.md)) |
-| Testes automatizados (unitários + integração) | `src/test/` — gate JaCoCo ≥ 80% no núcleo |
-| APIs da OS (abertura, status, decisão de orçamento, listagem ordenada, notificação por e-mail) | `/ordens-servico` e `/publico/ordens-servico` (ver [Endpoints](#endpoints-principais)) |
-| Dockerfile atualizado + docker-compose | [`Dockerfile`](Dockerfile) · [`docker-compose.yml`](docker-compose.yml) |
-| Manifestos Kubernetes (Deployment, Service, ConfigMap, Secrets, **HPA**) | [`k8s/`](k8s/) |
-| Terraform (cluster Kubernetes + **banco de dados**) | [`infra/`](infra/) |
-| Pipeline CI/CD | [`.github/workflows/`](.github/workflows/) (ver [CI/CD](#cicd)) |
-| Collection das APIs | [`openapi.yaml`](openapi.yaml) (versionada — importa no Postman/Insomnia/Swagger Editor) · Swagger UI em `http://localhost:8080/swagger` com a app rodando |
-| Vídeo demonstrativo (deploy, CI/CD, APIs, escalabilidade) | https://drive.google.com/file/d/1Ydvl0G6CNienw6rxaxGgV3rgRhDJ-ivf/view?usp=sharing |
+| Proteger rotas sensíveis com **autenticação via CPF** | [`AreaClienteResource`](src/main/java/br/com/fiap/techchallenge/oficina/external/api/AreaClienteResource.java) — `/cliente/ordens-servico/*` |
+| **Function Serverless** que valida CPF, consulta o cliente e emite JWT | [`lambda-auth/`](lambda-auth/) (repositório 1) |
+| **API Gateway** para controle e roteamento | [`lambda-auth/infra/`](lambda-auth/infra/) |
+| **Banco gerenciado** (RDS PostgreSQL) | [`infra-database/`](infra-database/) (repositório 3) |
+| **Cluster Kubernetes** com escalabilidade (EKS + HPA) | [`infra-k8s/`](infra-k8s/) (repositório 2) |
+| **Terraform** para provisionamento | 3 repositórios, 19 arquivos `.tf` |
+| **Observabilidade** — latência, recursos, logs JSON, correlação | OpenTelemetry + Micrometer → New Relic |
+| Dashboards: volume de OS, tempo médio por status, erros de integração | Métricas `oficina_*` em `/q/metrics` |
+| **CI/CD** em 4 repositórios, com deploy automático | [`.github/workflows/`](.github/workflows/) + um workflow por repo |
+| Modelagem de dados documentada e ajustada | [`V7__cliente_status.sql`](src/main/resources/db/migration/V7__cliente_status.sql) + [modelagem-dados.md](docs/fase-3/modelagem-dados.md) |
+| Documentação: componentes, sequência, RFCs, ADRs, ER | [`docs/fase-3/`](docs/fase-3/) — 3 RFCs, 4 ADRs, 7 diagramas |
+
+### O que a fase 3 corrigiu
+
+Até a fase 2, esta rota era pública:
+
+```
+POST /publico/ordens-servico/{id}/orcamento/decisao
+```
+
+Qualquer pessoa com o UUID de uma Ordem de Serviço **aprovava o orçamento dela** — e
+UUID de OS circula em link de e-mail. Era a "rota sensível" que o enunciado da fase 3
+manda proteger.
+
+Agora existe a área do cliente, que exige token **e** confere de quem é a OS:
+
+```
+Bruno (token válido) → POST /cliente/ordens-servico/{OS-da-Alice}/orcamento/decisao → 403
+Alice                → POST /cliente/ordens-servico/{OS-dela}/orcamento/decisao     → 200
+```
+
+Só exigir login não resolveria nada: trocaria *"qualquer um com o UUID"* por *"qualquer
+cliente logado"*. Por isso a comparação de propriedade, feita **dentro da transação** da
+decisão. Coberto por 7 testes de integração em
+[`AreaClienteResourceIT`](src/test/java/br/com/fiap/techchallenge/oficina/external/api/AreaClienteResourceIT.java).
 
 ---
 
-## Desenho da arquitetura
+## Os quatro repositórios
 
-Componentes da aplicação, infraestrutura provisionada e fluxo de deploy.
-Legenda de cores: 🟦 **azul** = provisionado pelo Terraform (`infra/`) ·
-🟩 **verde** = aplicado pelos manifestos (`k8s/`) · 🟨 **amarelo** = GitHub Actions ·
-⬜ **cinza** = host/Docker/atores externos.
+| # | Repositório | Papel | Provisiona |
+| --- | --- | --- | --- |
+| 1 | [`lambda-auth/`](lambda-auth/) | Function de autenticação por CPF | Lambda + API Gateway |
+| 2 | [`infra-k8s/`](infra-k8s/) | Rede e cluster | Security groups + EKS + metrics-server |
+| 3 | [`infra-database/`](infra-database/) | Banco gerenciado | RDS PostgreSQL + Secrets Manager |
+| 4 | **este** | Aplicação Quarkus | Imagem + manifestos Kubernetes |
 
-### Componentes da aplicação (Clean Architecture)
+Os repositórios não se conhecem: cada um **publica** no SSM Parameter Store o endereço
+do que criou, e **lê** o que precisa dos outros. O endpoint do RDS, por exemplo, é
+gerado pela AWS no repo 3 e chega ao ConfigMap desta aplicação no momento do deploy.
 
-![Componentes da aplicação — Clean Architecture](files/arquitetura-painel-a-componentes.jpg)
+**Ordem de aplicação:** `2 → 3 → 1 → 4`. Fora de ordem, o Terraform falha com
+"parâmetro não encontrado" — o contrato funcionando.
 
-### Infraestrutura provisionada
+---
 
-![Infraestrutura provisionada — cluster kind, app e banco](files/arquitetura-painel-b-infraestrutura.jpg)
+## Arquitetura
 
-### Fluxo de deploy (CI/CD)
+### Visão de nuvem
 
-![Fluxo de deploy — CI e CD no GitHub Actions](files/arquitetura-painel-c-cicd.jpg)
+![Componentes na nuvem](files/fase-3/componentes-visao-geral.png)
 
-- **Aplicação** (`k8s/`): Deployment com probes de health e hardening, Service
-  NodePort, ConfigMap, Secrets (app + chaves JWT), HPA 2→5 réplicas e
-  PodDisruptionBudget.
-- **Infraestrutura** (`infra/`, Terraform): cluster kind, banco PostgreSQL
-  (StatefulSet + volume persistente), Secret de credenciais do banco (fonte
-  única) e metrics-server (dependência do HPA).
-- **Deploy**: infraestrutura muda raramente (`terraform apply`); a aplicação
-  muda a cada commit (imagem nova + `kubectl apply -f k8s/`) — é exatamente a
-  divisão que a pipeline de CD automatiza.
+### Autenticação por CPF
+
+![Sequência da autenticação](files/fase-3/sequencia-autenticacao-cpf.png)
+
+A Lambda **assina** o token com a chave privada; a aplicação apenas **valida** com a
+pública. São processos separados, em repositórios diferentes, unidos só pelo contrato
+do [ADR 001](docs/fase-3/adr/adr-001-contrato-jwt-cliente.md).
+
+A aplicação **não consulta o banco** para validar um token — a verificação é
+criptográfica e local. É por isso que o token dura 30 minutos: essa é a janela máxima
+entre desativar um cliente e o acesso dele cessar.
+
+### Modelo de dados
+
+![Diagrama ER](files/fase-3/er-modelo-relacional.png)
+
+Justificativa da escolha do banco, explicação dos relacionamentos e os ajustes da fase 3
+em **[docs/fase-3/modelagem-dados.md](docs/fase-3/modelagem-dados.md)**.
+
+---
+
+## Autenticação — dois públicos
+
+| | Cliente | Funcionário |
+| --- | --- | --- |
+| Credencial | **CPF** | usuário e senha |
+| Emissor | **Lambda** (Node.js) | esta aplicação |
+| Endpoint | `POST /auth/cliente` (API Gateway) | `POST /auth/login` |
+| Role no token | `CLIENTE` | `ATENDENTE`, `MECANICO`, `ADMINISTRADOR` |
+| Validade | 30 min | 8 h |
+| Alcance | só as próprias OS | conforme a role |
+
+Os dois tokens são RS256, com o mesmo issuer e a mesma chave. O que os distingue é o
+claim `groups`.
+
+**`CLIENTE` não é um valor do enum `Role`** de propósito: cliente não é usuário da
+oficina — não tem senha, não tem registro em `usuarios`, e vive em outro bounded
+context. Misturá-los acoplaria Segurança a Atendimento sem necessidade.
+
+```bash
+# Funcionário
+TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123"}' | jq -r .accessToken)
+
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/clientes
+```
+
+```bash
+# Cliente (pelo API Gateway, quando a infraestrutura estiver no ar)
+TOKEN=$(curl -s -X POST "$API_GATEWAY/auth/cliente" \
+  -H 'Content-Type: application/json' \
+  -d '{"cpf":"529.982.247-25"}' | jq -r .accessToken)
+
+curl -H "Authorization: Bearer $TOKEN" "$API_GATEWAY/cliente/ordens-servico"
+```
+
+---
+
+## Observabilidade
+
+Três sinais, um destino:
+
+| Sinal | Como | Onde ver |
+| --- | --- | --- |
+| **Traces** | OpenTelemetry → OTLP `http/protobuf` | New Relic |
+| **Métricas** | Micrometer (JVM, HTTP e negócio) | `/q/metrics` e New Relic |
+| **Logs** | JSON estruturado com `traceId`/`spanId` | stdout → New Relic |
+
+As quatro métricas de negócio que alimentam os dashboards exigidos:
+
+```
+oficina_os_abertas_total                        → volume diário de OS
+oficina_os_fase_duracao_seconds{fase="..."}     → tempo médio por status
+oficina_integracao_falhas_total{integracao}     → erros nas integrações
+oficina_os_falhas_total{operacao}               → base do alerta de falhas
+```
+
+A duração de cada fase sai dos **marcos temporais do próprio agregado**
+(`diagnosticoIniciadoEm`, `execucaoIniciadaEm`, `finalizadaEm`), não de um cronômetro
+paralelo. Cada transição fecha exatamente uma fase, então não há como contar a mesma
+duração duas vezes.
+
+Os contadores saem com **exemplar OpenMetrics** carregando o `trace_id` da requisição
+que os incrementou — permite saltar de um pico no gráfico direto para o trace:
+
+```
+oficina_os_abertas_total 1.0 # {span_id="6b7c4175...",trace_id="10ff99c9..."} 1.0
+```
+
+O `MetricasGateway` é uma **porta no domínio**: as entidades declaram o que vale medir
+sem importar Micrometer. O adapter vive na borda e é *best-effort* — falha de telemetria
+nunca derruba operação de negócio.
+
+> Contador do Micrometer vive na memória de cada pod. Com múltiplas réplicas, ler
+> `/q/metrics` pelo Service devolve o valor de **um** pod. O New Relic faz scrape de
+> cada pod e soma; para inspeção manual, consulte o pod direto.
 
 ---
 
@@ -63,364 +186,226 @@ Legenda de cores: 🟦 **azul** = provisionado pelo Terraform (`infra/`) ·
 | Linguagem | Java 21 |
 | Framework | Quarkus 3.15.x |
 | Build | Maven |
-| Banco de dados | PostgreSQL 16 |
-| Migrations | Flyway |
+| Banco | PostgreSQL 16 (Amazon RDS) |
+| Migrations | Flyway (`V1`–`V7`) |
 | Persistência | Hibernate ORM + Panache |
+| Autenticação | JWT RS256 (SmallRye JWT) |
+| Observabilidade | OpenTelemetry + Micrometer + logs JSON |
 | API Docs | OpenAPI / Swagger UI (SmallRye) |
-| Auth | JWT (SmallRye JWT)|
-| Testes | JUnit 5 + Mockito + REST-Assured + Testcontainers |
-| Cobertura | JaCoCo (≥ 80% em `entities` e `usecases`) |
-| Análise estática | SonarQube |
-| Containers | Docker + docker-compose |
+| Testes | JUnit 5 · Mockito · REST-Assured · Testcontainers |
+| Cobertura | JaCoCo — gate de 80% em `entities` e `usecases` |
+| Containers | Docker · Kubernetes (EKS) · HPA |
+| IaC | Terraform |
+| Function | Node.js 20 (repositório 1) |
 
 ---
 
-## Por que Postgres?
-
-- **Relacional maduro com ACID forte** — essencial para os fluxos de orçamento e baixa de estoque, que precisam de consistência transacional (uma reserva de peça que falha não pode deixar saldo "corrompido").
-- **Open source, sem custo de licença** e fácil de containerizar.
-
----
-
-## Arquitetura — Clean Architecture (canônica, por bounded context)
+## Clean Architecture
 
 ```
-external (api/persistence/security/notificacao/config) → Frameworks & Drivers (Quarkus, JPA, JWT)
+external (api · persistence · security · notificacao · observabilidade · config)
+   ↓                                            Frameworks & Drivers
+controllers · presenters · gateways · dtos      Interface Adapters (por BC)
    ↓
-controllers · presenters · gateways · dtos   → Interface Adapters (por BC)
+usecases                                        Application (1 classe por caso de uso)
    ↓
-usecases                                      → Application (1 classe por caso de uso)
-   ↓
-entities                                      → Enterprise (agregados, VOs, regras puras)
+entities                                        Enterprise (agregados, VOs, regras puras)
 ```
 
-A dependência aponta **sempre para dentro**. `entities` e `usecases` **não** importam
-Quarkus, JPA, Jackson nem `jakarta.transaction` — verificado por build (grep + gate JaCoCo).
-Detalhe completo, diagramas e o de→para da refatoração em **[docs/ARQUITETURA.md](docs/ARQUITETURA.md)**.
-
-### Bounded Contexts
-
-- **Atendimento** (Customer/Downstream) — Cliente, Veículo, Serviço, Ordem de Serviço.
-- **Estoque** (Supplier/Upstream) — Peça, Saldo, Reserva, Baixa.
-- Relação **Customer-Supplier**: Atendimento consome Estoque para reservar/baixar peças durante a Ordem de Serviço.
-
----
-
-## Execução local (modo dev)
-
-Pré-requisitos: Docker, JDK 21 e Maven 3.9+.
+A dependência aponta **sempre para dentro**. `entities` e `usecases` não importam
+Quarkus, JPA, Jackson, Micrometer nem OpenTelemetry — verificado por grep no build:
 
 ```bash
-# 1) Sobe só o Postgres em container
-docker compose up -d postgres
+grep -rnE "^import (jakarta|io\.quarkus|org\.hibernate|com\.fasterxml|io\.micrometer|io\.opentelemetry)\." \
+  src/main/java/br/com/fiap/techchallenge/oficina/*/entities \
+  src/main/java/br/com/fiap/techchallenge/oficina/*/usecases | wc -l   # -> 0
+```
 
-# 2) Roda a app em modo dev (hot reload)
+**Bounded contexts:** `atendimento` (Cliente, Veículo, Serviço, OS), `estoque` (Peça,
+Reserva), `relatorio`, `seguranca`. Atendimento consome Estoque para reservar e baixar
+peças — relação Customer-Supplier resolvida no controller, nunca dentro do agregado.
+
+Detalhes em **[docs/ARQUITETURA.md](docs/ARQUITETURA.md)**.
+
+---
+
+## Endpoints
+
+Especificação completa em [`openapi.yaml`](openapi.yaml) — importe no Postman, Insomnia
+ou Swagger Editor. Com a aplicação no ar: `http://localhost:8080/swagger`.
+
+### Área do cliente (fase 3)
+
+| Método | Path | Regra |
+| --- | --- | --- |
+| GET | `/cliente/ordens-servico` | Lista **as próprias** OS |
+| GET | `/cliente/ordens-servico/{id}` | 403 se a OS for de outro cliente |
+| GET | `/cliente/ordens-servico/{id}/status` | idem |
+| POST | `/cliente/ordens-servico/{id}/orcamento/decisao` | Aprova ou recusa a **própria** OS |
+
+O id do cliente vem do claim `sub` do token — **nunca** de parâmetro da requisição.
+
+### Administrativos
+
+| Recurso | Path | Roles |
+| --- | --- | --- |
+| Login | `POST /auth/login` | público |
+| Cadastrar usuário | `POST /auth/usuarios` | ADMINISTRADOR |
+| Clientes · Veículos | `/clientes` · `/veiculos` | ATENDENTE/ADMIN (escrita) |
+| Serviços · Peças | `/servicos` · `/pecas` | ADMINISTRADOR |
+| Ordens de serviço | `/ordens-servico` | varia por endpoint |
+| Listagem ordenada | `GET /ordens-servico` | autenticado |
+| Tempo médio | `GET /relatorios/tempo-medio-execucao` | ADMINISTRADOR |
+
+### Operacionais
+
+`GET /health` · `GET /q/health/*` · `GET /q/metrics` · `GET /openapi` · `GET /swagger`
+
+### Descontinuados
+
+`/publico/ordens-servico/*` — mantidos por compatibilidade com a fase 2, marcados como
+`@Deprecated` e riscados no Swagger. Serão protegidos por API key no gateway.
+Razão em [ADR 002](docs/fase-3/adr/adr-002-descontinuar-rotas-publicas.md).
+
+---
+
+## Execução local
+
+Pré-requisitos: Docker, JDK 21, Maven 3.9+.
+
+```bash
+docker compose up -d postgres
 mvn quarkus:dev
 ```
 
-A app sobe em `http://localhost:8080`. Endpoints úteis:
+A aplicação sobe em `http://localhost:8080`.
 
-- `GET http://localhost:8080/health` → `{"status":"UP"}`
-- `http://localhost:8080/swagger` → Swagger UI
-- `http://localhost:8080/openapi` → especificação OpenAPI (JSON/YAML)
-- `http://localhost:8080/q/health` → health check do SmallRye
+> Se a porta 8080 estiver ocupada pelo cluster kind da fase 2, use
+> `mvn quarkus:dev -Dquarkus.http.port=8081`.
 
----
-
-## Execução local via Docker Compose
+Tudo junto em container:
 
 ```bash
 docker compose up --build
-```
-
-Isso sobe o Postgres + app, com Flyway aplicando as migrations no startup.
-Verifique:
-
-```bash
-curl http://localhost:8080/health
-# {"status":"UP"}
-```
-
-Para subir também o **SonarQube**:
-
-```bash
-docker compose --profile tools up -d
-# Sonar disponível em http://localhost:9000  (login default: admin / admin → trocar no primeiro acesso)
+curl http://localhost:8080/health    # {"status":"UP"}
 ```
 
 ---
 
-## Provisionamento da infraestrutura com Terraform
-
-Pré-requisitos: Docker Desktop, Terraform ≥ 1.5 (`winget install Hashicorp.Terraform`)
-e kind (`winget install Kubernetes.kind`). O Terraform em **[`infra/`](infra/)**
-provisiona o cluster Kubernetes local ([kind](https://kind.sigs.k8s.io/), 2 nós),
-o **banco PostgreSQL 16** (StatefulSet + volume persistente), o Secret de
-credenciais do banco e o metrics-server (dependência do HPA):
+## Testes
 
 ```bash
-cd infra
-terraform init     # baixa os providers (primeira vez apenas)
-terraform plan     # revisa o que será criado
-terraform apply    # cria tudo (~2 a 4 minutos)
+mvn verify                      # unitários + gate de cobertura
+mvn verify -DskipITs=false      # + integração (exige Docker)
 ```
 
-Verificação:
+Estado atual: **238 testes unitários + 54 de integração**, zero falhas, cobertura acima
+do gate. A Lambda tem **14 testes** próprios (`cd lambda-auth && npm test`).
 
-```bash
-kubectl config use-context kind-oficina
-kubectl get nodes             # 2 nós Ready
-kubectl -n oficina get pods   # oficina-db-0 Running (1/1)
-```
+Dois testes merecem destaque porque provam comportamento, não implementação:
 
-Para remover tudo: `terraform destroy`. Lista completa dos recursos criados,
-variáveis e caminho de migração para cloud: **[infra/README.md](infra/README.md)**.
+- **`ObservabilidadeIT`** — percorre o ciclo de vida real de uma OS via HTTP, contra
+  Postgres em Testcontainers, e lê o `/q/metrics` da aplicação no ar conferindo valor
+  por valor. Se a instrumentação sair do fluxo, ele quebra.
+- **`AreaClienteResourceIT`** — o cenário do "cliente curioso": Bruno, autenticado,
+  tenta ver e aprovar a OS de Alice, e recebe 403 nos dois casos.
 
 ---
 
-## Deploy em Kubernetes
+## Deploy
 
-Com a infraestrutura provisionada, o deploy aplica os manifestos de
-**[`k8s/`](k8s/)** — Deployment, Service, ConfigMap, Secrets, **HPA**
-(2→5 pods por CPU/memória) e PodDisruptionBudget:
+### Cluster local (kind) — herdado da fase 2
 
 ```bash
-# Caminho feliz — script que faz build da imagem, kind load e kubectl apply:
-./scripts/deploy-app.sh          # Linux/macOS/Git Bash
-.\scripts\deploy-app.ps1         # Windows PowerShell
-
-# Ou manualmente:
-docker build -t oficina-mvp:latest .
-kind load docker-image oficina-mvp:latest --name oficina
-kubectl apply -f k8s/
-kubectl -n oficina rollout status deployment/oficina-app
+cd infra && terraform apply     # cluster + Postgres + metrics-server
+./scripts/deploy-app.sh         # build, kind load, kubectl apply
 ```
 
-A aplicação sobe em `http://localhost:8080` (Swagger em `/swagger`, health em
-`/health`). Para ver a **escala automática** em ação, ligue o gerador de carga
-e acompanhe o HPA subir de 2 para 5 réplicas:
+### AWS
+
+A infraestrutura vive nos repositórios 1, 2 e 3. Os scripts em
+[`scripts/fase-3/`](scripts/fase-3/) fazem a sequência inteira:
 
 ```bash
-kubectl apply -f scripts/gerador-carga.yaml   # liga a carga
-kubectl -n oficina get hpa -w                 # acompanha as decisões do autoscaler
-kubectl delete -f scripts/gerador-carga.yaml  # desliga a carga
+bash scripts/fase-3/00-diagnostico-lab.sh    # verifica o ambiente ANTES de criar nada
+bash scripts/fase-3/01-bootstrap.sh SUFIXO   # backend do Terraform (uma vez)
+bash scripts/fase-3/02-aplicar.sh hom        # cluster → banco → lambda, na ordem
+bash scripts/fase-3/99-destruir.sh hom       # antes de fechar o lab
 ```
 
-Detalhe de cada manifesto e do teste do HPA: **[k8s/README.md](k8s/README.md)**.
+A aplicação sobe pelo workflow [`cd-aws.yml`](.github/workflows/cd-aws.yml): build →
+imagem no ECR → `kubectl apply` no EKS → smoke test.
 
 ---
 
 ## CI/CD
 
-Duas pipelines no GitHub Actions ([`.github/workflows/`](.github/workflows/)):
+| Branch | Ambiente | O que acontece |
+| --- | --- | --- |
+| Pull Request | — | Testes, cobertura, `terraform plan` comentado no PR |
+| `homolog` | `hom` | Deploy automático |
+| `main` | `prod` | Deploy automático (com aprovação, via GitHub Environment) |
 
-**CI** ([`ci.yml`](.github/workflows/ci.yml)) — em todo push de branch (exceto `main`, onde o CD repete os testes) e em PR para a `main`, três jobs paralelos:
+`main` protegida, sem commit direto, merge só por Pull Request.
 
-| Job | O que valida |
+Os quatro repositórios seguem o mesmo padrão. O `cd.yml` da fase 2 (cluster kind efêmero
+dentro do runner) continua aqui como evidência da entrega anterior — e roda sem depender
+da nuvem.
+
+---
+
+## Documentação
+
+| Documento | Conteúdo |
 | --- | --- |
-| Build + testes | `mvn verify` — testes unitários (Surefire) + integração com Postgres real via Testcontainers (Failsafe) + gate JaCoCo ≥ 80% |
-| Imagem Docker | `docker build` do Dockerfile multi-stage |
-| Infraestrutura | `terraform fmt`/`validate` em `infra/` + validação dos manifestos `k8s/` com kubeconform |
-
-**CD** ([`cd.yml`](.github/workflows/cd.yml)) — a cada push na `main`, em sequência:
-
-1. **Build da aplicação + testes automatizados** (`mvn verify`);
-2. **Build da imagem Docker** e publicação no **GitHub Container Registry**
-   (tag imutável do commit + `latest`);
-3. **Deploy**: `terraform apply` de `infra/` (provisiona o **cluster Kubernetes**
-   e o **banco de dados**), carga da imagem publicada no cluster e
-   **aplicação dos manifestos** `kubectl apply -f k8s/`;
-4. **Smoke test**: health check, login JWT e chamada autenticada na API, com
-   resumo do estado do cluster no summary da execução.
-
-Como a infraestrutura escolhida é um cluster **local** (kind — o enunciado
-permite "local ou cloud"), o deploy do CD acontece em um cluster efêmero criado
-dentro do próprio runner: cada execução prova, do zero, que IaC + banco +
-manifestos + imagem sobem íntegros. Para apontar para um cluster gerenciado
-(EKS/GKE/AKS), basta trocar o passo de provisionamento por um kubeconfig vindo
-de secrets — os passos de `kubectl apply` e smoke test permanecem os mesmos.
+| **[docs/fase-3/arquitetura.md](docs/fase-3/arquitetura.md)** | **Ponto de entrada** — mapeia cada exigência do enunciado ao documento |
+| [docs/fase-3/modelagem-dados.md](docs/fase-3/modelagem-dados.md) | Justificativa do banco, ER, relacionamentos |
+| [docs/fase-3/diagramas-sequencia.md](docs/fase-3/diagramas-sequencia.md) | Autenticação e abertura de OS |
+| [docs/fase-3/diagrama-componentes.md](docs/fase-3/diagrama-componentes.md) | Visão de nuvem |
+| [docs/fase-3/rfc/](docs/fase-3/rfc/) | RFCs 001–003: nuvem, banco, autenticação |
+| [docs/fase-3/adr/](docs/fase-3/adr/) | ADRs 001–004: contrato do JWT, rotas descontinuadas, HPA, comunicação |
+| [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | Clean Architecture da aplicação |
 
 ---
 
-## Build e testes
-
-```bash
-# Build sem rodar JaCoCo:
-mvn -B verify -Djacoco.skip=true
-
-# Build com cobertura:
-mvn -B verify
-```
-
-Relatório JaCoCo em `target/site/jacoco/index.html`.
-
----
-
-## Endpoints principais
-
-> _Atualizado conforme o projeto evolui._
-
-| Recurso | Método | Path | Roles |
-| --- | --- | --- | --- |
-| Health | GET | `/health` | público |
-| Swagger UI | GET | `/swagger` | público |
-| Painel de demonstração | GET | `/` | público |
-| Login JWT | POST | `/auth/login` | público |
-| Cadastrar usuário | POST | `/auth/usuarios` | ADMINISTRADOR |
-| Clientes | CRUD | `/clientes` | ATENDENTE/ADMIN (escrita) · todos (leitura) |
-| Veículos | CRUD | `/veiculos` | ATENDENTE/ADMIN (escrita) · todos (leitura) |
-| Serviços | CRUD | `/servicos` | ADMINISTRADOR |
-| Peças / Estoque | CRUD + saldo | `/pecas` | ADMINISTRADOR |
-| Ordens de Serviço | Abertura + fluxo | `/ordens-servico` | varia por endpoint|
-| Listagem ordenada (Execução > Aguard. aprovação > Diagnóstico > Recebida; antigas primeiro) | GET | `/ordens-servico` | autenticado |
-| Status da OS | GET | `/ordens-servico/{id}/status` | autenticado |
-| Consulta pública | GET | `/publico/ordens-servico/{id}` | **público** |
-| Status público da OS | GET | `/publico/ordens-servico/{id}/status` | **público** |
-| Decisão do orçamento (webhook) | POST | `/publico/ordens-servico/{id}/orcamento/decisao` | **público** |
-| Tempo médio | GET | `/relatorios/tempo-medio-execucao` | ADMINISTRADOR |
-
----
-
-## Como autenticar
-
-Todos os endpoints administrativos exigem **JWT Bearer**. O token é emitido pelo `POST /auth/login` e válido por 8 horas (configurável em `oficina.jwt.expiration`).
-
-### 1) Faz login com o admin inicial
-
-O usuário `admin` é provisionado automaticamente no startup pelo `AdminBootstrap`, com a senha definida em `ADMIN_PASSWORD` (default `admin123` em dev — **rotacionar em produção**).
-
-```bash
-curl -X POST http://localhost:8080/auth/login \
-     -H "Content-Type: application/json" \
-     -d '{"username":"admin","password":"admin123"}'
-```
-
-Resposta:
-
-```json
-{
-  "accessToken": "eyJhbGciOiJSUzI1NiJ9...",
-  "expiresIn": 28800,
-  "role": "ADMINISTRADOR"
-}
-```
-
-### 2) Usa o token nos endpoints
-
-```bash
-TOKEN="eyJhbGciOiJSUzI1NiJ9..."
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/clientes
-```
-
-No **Swagger UI** (`/swagger`), clique em **Authorize**, cole apenas o token (sem o prefixo `Bearer`) e dispare as requisições.
-
-### 3) Cadastra novos usuários (somente ADMINISTRADOR)
-
-```bash
-curl -X POST http://localhost:8080/auth/usuarios \
-     -H "Authorization: Bearer $TOKEN" \
-     -H "Content-Type: application/json" \
-     -d '{"username":"mecanico1","password":"senha-segura","role":"MECANICO"}'
-```
-
-### Chaves RSA de assinatura
-
-Em `src/main/resources/` há um par de chaves **só para dev** (`privateKey.pem` / `publicKey.pem`). Em produção, monte os arquivos via secret manager ou aponte `mp.jwt.verify.publickey.location` / `smallrye.jwt.sign.key.location` para caminhos absolutos.
-
----
-
-## Estrutura de pastas
+## Estrutura
 
 ```
-src/main/java/br/com/fiap/techchallenge/oficina
-├── atendimento/             # bounded context (mesmo padrão em estoque/, seguranca/, relatorio/)
-│   ├── entities/            # agregados + VOs + exceções    (framework-free)
-│   ├── usecases/            # 1 classe por caso de uso       (framework-free)
-│   ├── gateways/            # ports (ex-*Repository → *Gateway)
-│   ├── controllers/         # orquestram use cases + transação + presenter
-│   ├── presenters/          # domínio → *Response DTO
-│   └── dtos/                # Request/Response (records)
-├── shared/
-│   ├── entities/            # Documento, Placa, Dinheiro, DomainException
-│   └── usecases/            # ExecutorTransacional (porta de transação)
-└── external/                # Frameworks & Drivers
-    ├── api/                 # *Resource (JAX-RS) + exception mappers
-    ├── persistence/         # JPA/Panache, mappers, *GatewayImpl, ExecutorTransacionalJta
-    ├── security/            # JWT, BCrypt, AdminBootstrap
-    ├── notificacao/         # mailer (e-mail de status da OS)
-    └── config/              # composition root (CDI @Produces) + OpenAPI
-
-src/main/resources
-├── application.properties
-├── privateKey.pem            # chaves RSA dev — em produção, montar via secret
-├── publicKey.pem
-└── db/migration/V*.sql       # Flyway
+├── src/                      aplicação Quarkus (4 bounded contexts)
+├── k8s/                      manifestos: Deployment, Service, ConfigMap, Secrets, HPA, PDB
+├── infra/                    Terraform do cluster kind (fase 2)
+├── lambda-auth/              repositório 1 — Function de autenticação
+├── infra-k8s/                repositório 2 — rede e cluster EKS
+├── infra-database/           repositório 3 — RDS PostgreSQL
+├── scripts/fase-3/           kit de provisionamento na AWS
+├── docs/                     RFCs, ADRs, diagramas, guias
+└── files/fase-3/             diagramas exportados em PNG
 ```
 
 ---
 
-## Linguagem ubíqua
+## Fases anteriores
 
-Termos do domínio usados de forma consistente em código, testes e documentação.
+**Fase 1 — MVP com DDD.** Event storming, bounded contexts, linguagem ubíqua e o MVP
+funcional com clientes, veículos, serviços, estoque e ordem de serviço.
 
-| Termo | Significado no contexto da oficina |
-| --- | --- |
-| **Ordem de Serviço (OS)** | Documento central que registra cliente, veículo, problema, diagnóstico, serviços executados e peças utilizadas. |
-| **Diagnóstico** | Ação do mecânico para identificar o problema do veículo antes de gerar o orçamento. |
-| **Peça / Insumo** | Item físico mantido em estoque, consumido durante a execução de um serviço. |
-| **Cliente** | Pessoa física ou jurídica (CPF/CNPJ) dona do veículo e quem aprova o orçamento. |
-| **Veículo** | Automóvel atrelado a um cliente, identificado unicamente pela placa. |
-| **Serviço** | Mão de obra executada pelo mecânico (ex.: troca de óleo, alinhamento). |
-| **Orçamento** | Cálculo automático somando serviços + peças, requer validação do cliente. |
-| **Status da OS** | Recebida → Em diagnóstico → Aguardando aprovação → Em execução → Finalizada → Entregue. |
-| **Reserva** | Comprometimento temporário de uma peça com uma OS, antes da baixa. |
-| **Baixa de estoque** | Redução efetiva do saldo, acionada pela aprovação do orçamento. |
-| **Saldo disponível** | Saldo total da peça menos as reservas ativas. |
-| **Atendente** | Funcionário que abre a OS no recebimento e realiza a entrega ao cliente. |
-| **Mecânico** | Profissional que executa diagnóstico, insere itens na OS e finaliza os reparos. |
-| **Administrador** | Responsável pelos cadastros e atualização do saldo do estoque. |
-| **Token** | Credencial JWT emitida após autenticação, usada para acessar APIs administrativas. |
+**Fase 2 — qualidade e escalabilidade.** Refatoração para Clean Architecture canônica,
+testes automatizados com gate de cobertura, containerização, Kubernetes com HPA,
+Terraform e pipeline de CI/CD.
+[Vídeo demonstrativo](https://drive.google.com/file/d/1Ydvl0G6CNienw6rxaxGgV3rgRhDJ-ivf/view?usp=sharing).
 
----
-
-## Como rodar testes e gerar cobertura
-
-```bash
-# Roda testes unitários + cobertura JaCoCo (regra ≥80% nos pacotes críticos)
-mvn -B clean verify
-
-# Relatório HTML
-open target/site/jacoco/index.html      # macOS
-start target\site\jacoco\index.html     # Windows
-xdg-open target/site/jacoco/index.html  # Linux
-```
-
-A regra do JaCoCo (`<rule>`) **falha o build** se, nos pacotes `*.entities` ou `*.usecases`, a cobertura de instruções cair abaixo de **80%** ou a de branches abaixo de **75%**.
-
----
-
-## Como rodar análise SonarQube
-
-```bash
-# 1) Sobe Sonar local (uma vez)
-docker compose --profile tools up -d sonarqube sonar-postgres
-# Aguarda http://localhost:9000 ficar disponível (admin / admin → trocar senha)
-# Cria projeto "oficina-mvp" e gera token
-
-# 2) Roda análise apontando para o Sonar local
-mvn -B clean verify sonar:sonar \
-  -Dsonar.projectKey=oficina-mvp \
-  -Dsonar.host.url=http://localhost:9000 \
-  -Dsonar.login=$SONAR_TOKEN \
-  -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
-```
 ---
 
 ## Limitações conhecidas
 
-Decisões conscientes para manter o MVP enxuto:
+Declaradas de propósito — são escolhas de escopo, não descuidos:
 
-- **Sem CORS habilitado** — o backend é consumido por um cliente confiável (Swagger UI no MVP). Habilitar quando o front-end web entrar em escopo.
-- **Decisão do orçamento por webhook público sem assinatura** — a fase 2 introduziu `POST /publico/ordens-servico/{id}/orcamento/decisao` para receber a aprovação/recusa externa do cliente (o UUID da OS funciona como capability token). Evolução futura: link único assinado / OTP / verificação de origem. A rota interna `/orcamento/aprovar|recusar` (ATENDENTE/ADMIN) segue disponível para registro presencial.
-- **Chaves RSA do JWT versionadas** — `privateKey.pem`/`publicKey.pem` em `src/main/resources/` são **só para dev**. Em produção, montar via secret manager (env `MP_JWT_VERIFY_PUBLICKEY_LOCATION` / `SMALLRYE_JWT_SIGN_KEY_LOCATION`).
-- **Senha admin default** — `admin123` sempre que a env `ADMIN_PASSWORD` não é definida. Em produção, defini-la via secret é obrigatório.
+| Limitação | Razão |
+| --- | --- |
+| RDS **sem Multi-AZ** | Dobraria o custo; fora do orçamento do ambiente acadêmico |
+| **VPC default**, sem subnets privadas | NAT Gateway e VPC endpoints consumiriam o crédito da fase inteira; o isolamento vem dos security groups |
+| Revogação de token **não é imediata** | Limitada à janela de 30 min — consequência de não consultar o banco a cada requisição |
+| Segredos como variável de ambiente da Lambda | A alternativa exigiria NAT ou VPC endpoint pago |
+| `/publico/ordens-servico/*` sem autenticação | Depreciado por compatibilidade com a fase 2; a proteção vem por API key no API Gateway |
+
+Cada uma está detalhada no RFC ou ADR correspondente.

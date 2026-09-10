@@ -2,6 +2,7 @@ package br.com.fiap.techchallenge.oficina.external.notificacao;
 
 import br.com.fiap.techchallenge.oficina.atendimento.entities.Cliente;
 import br.com.fiap.techchallenge.oficina.atendimento.entities.OrdemServico;
+import br.com.fiap.techchallenge.oficina.atendimento.gateways.MetricasGateway;
 import br.com.fiap.techchallenge.oficina.atendimento.gateways.NotificacaoGateway;
 import io.quarkus.mailer.Mail;
 import io.quarkus.mailer.Mailer;
@@ -21,9 +22,11 @@ public class MailerNotificacaoGateway implements NotificacaoGateway {
     private static final Logger LOG = Logger.getLogger(MailerNotificacaoGateway.class);
 
     private final Mailer mailer;
+    private final MetricasGateway metricas;
 
-    public MailerNotificacaoGateway(Mailer mailer) {
+    public MailerNotificacaoGateway(Mailer mailer, MetricasGateway metricas) {
         this.mailer = mailer;
+        this.metricas = metricas;
     }
 
     @Override
@@ -43,6 +46,7 @@ public class MailerNotificacaoGateway implements NotificacaoGateway {
             LOG.infof("Notificação de status enviada — OS %s → %s (%s)",
                     os.id().valor(), os.status(), cliente.email());
         } catch (Exception e) {
+            metricas.falhaIntegracao("email");
             LOG.errorf(e, "Falha ao notificar cliente %s sobre a OS %s (status %s)",
                     cliente.email(), os.id().valor(), os.status());
         }

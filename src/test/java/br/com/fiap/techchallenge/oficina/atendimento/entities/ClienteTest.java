@@ -57,15 +57,15 @@ class ClienteTest {
     @Test
     void reconstituirNaoRegeraId() {
         ClienteId id = ClienteId.novo();
-        Cliente c = Cliente.reconstituir(id, "João", DOC, null, null);
+        Cliente c = Cliente.reconstituir(id, "João", DOC, null, null, true);
         assertSame(id, c.id());
     }
 
     @Test
     void equalsEHashCodePorId() {
         ClienteId id = ClienteId.novo();
-        Cliente a = Cliente.reconstituir(id, "João", DOC, null, null);
-        Cliente b = Cliente.reconstituir(id, "Outro", DOC, null, null);
+        Cliente a = Cliente.reconstituir(id, "João", DOC, null, null, true);
+        Cliente b = Cliente.reconstituir(id, "Outro", DOC, null, null, true);
         assertEquals(a, b);
         assertEquals(a.hashCode(), b.hashCode());
         assertNotEquals(a, Cliente.novo("João", DOC, null, null));
