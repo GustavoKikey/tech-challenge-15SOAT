@@ -47,7 +47,9 @@ fi
 echo "OK."
 echo
 
-REPOS="oficina-auth-lambda oficina-infra-k8s oficina-infra-database oficina-app"
+# O repositório da aplicação mantém o nome do desafio; os outros três
+# nasceram na fase 3 com o nome do que provisionam.
+REPOS="oficina-auth-lambda oficina-infra-k8s oficina-infra-database tech-challenge-15SOAT"
 for repo in $REPOS; do
   echo "==> ${USUARIO}/${repo}"
   if ! gh secret set AWS_ACCESS_KEY_ID --repo "$USUARIO/$repo" --body "$CHAVE" 2>/dev/null; then

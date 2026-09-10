@@ -3,7 +3,7 @@ resource "aws_ssm_parameter" "apigw_invoke_url" {
   name        = "${local.prefixo_ssm}/apigw/invoke-url"
   description = "URL base do API Gateway"
   type        = "String"
-  value       = aws_apigatewayv2_stage.default.invoke_url
+  value       = local.url_base
   overwrite   = true
   tags        = local.tags
 }
