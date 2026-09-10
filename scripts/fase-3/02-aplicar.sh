@@ -40,23 +40,32 @@ if [ -z "${JWT_PRIVATE_KEY_BASE64:-}" ]; then
   exit 1
 fi
 
+# Argumentos: <diretório> <prefixo do state> [extras do terraform apply]
+#
+# A chave do state carrega o ambiente — infra-k8s/prod/terraform.tfstate.
+# Com uma chave única por módulo, aplicar prod sobre o state de hom não cria
+# um segundo ambiente: o Terraform lê como "os recursos que eu gerencio
+# mudaram de nome" e destrói hom para recriar tudo como prod (ver
+# docs/fase-3/adr/adr-005-state-por-ambiente.md).
 aplicar() {
   local dir="$1"
-  shift
+  local modulo="$2"
+  shift 2
   echo
   echo "======================================================================"
-  echo "  $dir  ->  ambiente $AMBIENTE"
+  echo "  $dir  ->  ambiente $AMBIENTE  (state: $modulo/$AMBIENTE)"
   echo "======================================================================"
   cd "$RAIZ/$dir"
   terraform init -input=false -reconfigure \
     -backend-config="bucket=${TF_STATE_BUCKET}" \
-    -backend-config="dynamodb_table=${TF_LOCK_TABLE}"
+    -backend-config="dynamodb_table=${TF_LOCK_TABLE}" \
+    -backend-config="key=${modulo}/${AMBIENTE}/terraform.tfstate"
   terraform apply -auto-approve -input=false -var="ambiente=${AMBIENTE}" "$@"
 }
 
-aplicar infra-k8s
-aplicar infra-database
-aplicar lambda-auth/infra -var="jwt_private_key_base64=${JWT_PRIVATE_KEY_BASE64}"
+aplicar infra-k8s        infra-k8s
+aplicar infra-database   infra-database
+aplicar lambda-auth/infra lambda-auth -var="jwt_private_key_base64=${JWT_PRIVATE_KEY_BASE64}"
 
 cd "$RAIZ/lambda-auth/infra"
 URL=$(terraform output -raw invoke_url 2>/dev/null || echo "?")

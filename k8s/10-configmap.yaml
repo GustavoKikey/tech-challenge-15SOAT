@@ -49,8 +49,8 @@ data:
   AMBIENTE: "prod"
   OTLP_ENDPOINT: "https://otlp.nr-data.net:4318"
 
-  # Chave-liga/desliga do envio de traces. Mantido em "none" enquanto não há
-  # license key: com o exportador ligado e sem chave, o New Relic recusa cada
+  # Chave-liga/desliga da telemetria. Mantido em "true" (desligado) enquanto
+  # não há license key: com o SDK ativo e sem chave, o New Relic recusa cada
   # lote e a aplicação loga "Failed to export spans" em loop. Trocar para
-  # "otlp" no mesmo momento em que o Secret oficina-newrelic for criado.
-  OTEL_TRACES_EXPORTER: "none"
+  # "false" no mesmo momento em que o Secret oficina-newrelic for criado.
+  OTEL_SDK_DISABLED: "true"

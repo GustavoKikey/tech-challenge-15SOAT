@@ -127,13 +127,23 @@ TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/clientes
 ```
 
+O token e o consumo acontecem em **hosts diferentes**, e é assim de propósito: o API
+Gateway publica apenas a Function de autenticação; a aplicação é servida pelo cluster.
+Quem emite a credencial não é quem guarda os dados.
+
 ```bash
-# Cliente (pelo API Gateway, quando a infraestrutura estiver no ar)
+# 1. Token — API Gateway -> Function serverless
+API_GATEWAY=$(aws ssm get-parameter --name /oficina/hom/apigw/invoke-url \
+  --query Parameter.Value --output text)
+
 TOKEN=$(curl -s -X POST "$API_GATEWAY/auth/cliente" \
   -H 'Content-Type: application/json' \
   -d '{"cpf":"529.982.247-25"}' | jq -r .accessToken)
 
-curl -H "Authorization: Bearer $TOKEN" "$API_GATEWAY/cliente/ordens-servico"
+# 2. Consumo — aplicação no cluster
+kubectl -n oficina port-forward svc/oficina-app 8080:80 &
+
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/cliente/ordens-servico
 ```
 
 ---
@@ -299,8 +309,9 @@ mvn verify                      # unitários + gate de cobertura
 mvn verify -DskipITs=false      # + integração (exige Docker)
 ```
 
-Estado atual: **238 testes unitários + 54 de integração**, zero falhas, cobertura acima
-do gate. A Lambda tem **14 testes** próprios (`cd lambda-auth && npm test`).
+A suíte tem **238 testes unitários e 54 de integração**, com gate de cobertura que
+falha o build abaixo de 80% no núcleo. A Function tem **14 testes** próprios
+(`cd lambda-auth && npm test`).
 
 Dois testes merecem destaque porque provam comportamento, não implementação:
 
@@ -314,7 +325,7 @@ Dois testes merecem destaque porque provam comportamento, não implementação:
 
 ## Deploy
 
-### Cluster local (kind) — herdado da fase 2
+### Cluster local (kind)
 
 ```bash
 cd infra && terraform apply     # cluster + Postgres + metrics-server
@@ -373,7 +384,7 @@ da nuvem.
 ```
 ├── src/                      aplicação Quarkus (4 bounded contexts)
 ├── k8s/                      manifestos: Deployment, Service, ConfigMap, Secrets, HPA, PDB
-├── infra/                    Terraform do cluster kind (fase 2)
+├── infra/                    Terraform do cluster kind (desenvolvimento local)
 ├── lambda-auth/              repositório 1 — Function de autenticação
 ├── infra-k8s/                repositório 2 — rede e cluster EKS
 ├── infra-database/           repositório 3 — RDS PostgreSQL

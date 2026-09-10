@@ -10,7 +10,7 @@ protegidas aceitam:
 
 1. **valida o CPF** (formato + dígitos verificadores);
 2. **consulta existência e status** do cliente no RDS (`clientes.ativo`);
-3. **emite um JWT RS256** conforme o [ADR 001](../docs/fase-3/adr/adr-001-contrato-jwt-cliente.md).
+3. **emite um JWT RS256** conforme o [ADR 001](https://github.com/GustavoKikey/tech-challenge-15SOAT/blob/main/docs/fase-3/adr/adr-001-contrato-jwt-cliente.md).
 
 ## API
 
@@ -82,7 +82,7 @@ Não precisa de banco nem de AWS: o repositório é mockado.
 
 Injetadas pelo Terraform **no momento do apply**, lendo SSM/Secrets Manager. A função
 roda na VPC sem saída para a internet e por isso não consulta esses serviços em
-runtime (ver [ADR 004](../docs/fase-3/adr/adr-004-padrao-de-comunicacao.md), §3).
+runtime (ver [ADR 004](https://github.com/GustavoKikey/tech-challenge-15SOAT/blob/main/docs/fase-3/adr/adr-004-padrao-de-comunicacao.md), §3).
 
 | Variável | Origem | Obrigatória |
 | --- | --- | --- |
@@ -94,10 +94,11 @@ runtime (ver [ADR 004](../docs/fase-3/adr/adr-004-padrao-de-comunicacao.md), §3
 | `JWT_ISSUER` | default `oficina-mvp` | não |
 | `JWT_EXPIRACAO` | default `30m` (ADR 001) | não |
 
-## Verificação de interoperabilidade
+## Interoperabilidade com a aplicação
 
-Um token emitido por este código (Node) foi validado pela aplicação Quarkus rodando
-em Kubernetes, em 2026-09-08:
+O token emitido aqui é validado pela aplicação Quarkus com a chave pública
+correspondente. O contrato entre os dois é o ADR 001 — nenhum outro acoplamento
+existe entre a Function e a aplicação.
 
 ```
 GET /cliente/ordens-servico  + token da Lambda   → 200, lista as OS do cliente
@@ -105,10 +106,11 @@ GET /cliente/ordens-servico  sem token           → 401
 GET /cliente/ordens-servico  token adulterado    → 401
 ```
 
-Reproduzir localmente, com a aplicação no ar:
+Para emitir um token fora do fluxo HTTP — útil ao depurar a validação do lado da
+aplicação:
 
 ```bash
-export JWT_PRIVATE_KEY=$(cat ../src/main/resources/privateKey.pem)
+export JWT_PRIVATE_KEY=$(cat caminho/para/privateKey.pem)
 node --input-type=module -e "
 import { emitirToken } from './src/token.js';
 console.log(emitirToken({ id: '<uuid-do-cliente>', nome: 'Teste' }, '<cpf>').accessToken);

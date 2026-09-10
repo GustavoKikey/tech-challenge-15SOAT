@@ -21,11 +21,16 @@
 # provisionamento por um kubeconfig vindo de secrets — os passos de
 # 'kubectl apply' e smoke test permanecem os mesmos.
 # =====================================================================
-name: CD
+name: CD (kind — fase 2)
 
+# Entrega da fase 2, preservada como pipeline de referência: prova, do
+# zero e sem nuvem, que IaC + banco + manifestos + imagem sobem íntegros.
+#
+# A partir da fase 3 a entrega contínua na main é o cd-aws.yml, que faz o
+# deploy no EKS. Por isso este workflow roda apenas sob demanda: se ambos
+# disparassem no mesmo push, dois deploys concorreriam pela mesma tag de
+# imagem sem nenhum ganho.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

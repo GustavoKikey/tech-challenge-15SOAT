@@ -29,6 +29,21 @@ spec:
       maxUnavailable: 0  # ...sem derrubar nenhum antigo antes (zero downtime)
   template:
     metadata:
+      annotations:
+        # O coletor Prometheus do agente New Relic busca as métricas de
+        # negócio aqui. Sem estas anotações, os contadores oficina_* ficam
+        # só no endpoint do pod e nunca chegam aos dashboards — o OTLP
+        # carrega os traces, não o registry do Micrometer.
+        # Duas anotações porque o coletor tem dois jobs: o de
+        # prometheus.io/* aplica um filtro de integrações conhecidas
+        # (redis, nginx, coredns) e ignora aplicações próprias; o de
+        # newrelic.io/* coleta qualquer alvo anotado.
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/q/metrics"
+        prometheus.io/port: "8080"
+        newrelic.io/scrape: "true"
+        newrelic.io/path: "/q/metrics"
+        newrelic.io/port: "8080"
       labels:
         app.kubernetes.io/name: oficina-app
         app.kubernetes.io/component: api
