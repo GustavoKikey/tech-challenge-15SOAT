@@ -6,20 +6,56 @@
 # (readinessProbe OK).
 #
 # - Dentro do cluster:  http://oficina-app  (porta 80)
-# - Fora do cluster:    NodePort 30080, que o kind mapeia para
-#   http://localhost:8080 (extra_port_mappings em infra/cluster.tf).
-#   Em outros clusters: kubectl -n oficina port-forward svc/oficina-app 8080:80
+# - Fora do cluster:    depende de onde o cluster está.
+#
+# O tipo é LoadBalancer, mas o nodePort continua fixo em 30080 — os dois
+# caminhos coexistem de propósito:
+#
+#   EKS   o provedor cria um balanceador com nome DNS público;
+#   kind  não há provedor, o EXTERNAL-IP fica <pending> para sempre, e o
+#         acesso segue pelo nodePort 30080 que o kind mapeia para a 8080
+#         (extra_port_mappings em infra/cluster.tf).
+#
+# Sem o nodePort fixo, trocar para LoadBalancer quebraria o cluster local.
+# =====================================================================
+#
+# ACESSO EXTERNO FECHADO POR PADRÃO
+# ---------------------------------------------------------------------
+# 127.0.0.1/32 não corresponde a nenhuma origem que chegue pelo
+# balanceador: na prática, ninguém entra. É deliberado.
+#
+# A senha do administrador é conhecida (ADMIN_PASSWORD está neste
+# repositório, que é público). Um balanceador aberto por engano — porque
+# alguém esqueceu de restringir, ou porque um apply reescreveu a lista —
+# entrega acesso administrativo a quem achar a URL.
+#
+# Para liberar o próprio IP:
+#   bash scripts/fase-3/liberar-meu-ip.sh
 # =====================================================================
 apiVersion: v1
 kind: Service
 metadata:
   name: oficina-app
   namespace: oficina
+  annotations:
+    # O balanceador nasce nas subnets de TODAS as zonas da VPC, mas o node
+    # group ocupa só duas. Sem balanceamento entre zonas — que no ELB
+    # Clássico vem desligado por padrão — a requisição que chega numa zona
+    # sem nó não é redirecionada: ela expira.
+    #
+    # O sintoma engana, porque não é uma falha estável: parte das
+    # requisições responde 200 e parte estoura o tempo limite, o que
+    # parece instabilidade da aplicação em vez de topologia de rede.
+    #
+    # Ignorada em cluster kind, que não tem provedor de nuvem.
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
   labels:
     app.kubernetes.io/name: oficina-app
     app.kubernetes.io/part-of: oficina
 spec:
-  type: NodePort
+  type: LoadBalancer
+  loadBalancerSourceRanges:
+    - 127.0.0.1/32
   selector:
     app.kubernetes.io/name: oficina-app
   ports:
