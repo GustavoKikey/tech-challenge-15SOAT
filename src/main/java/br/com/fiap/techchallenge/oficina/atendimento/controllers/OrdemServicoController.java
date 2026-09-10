@@ -7,6 +7,7 @@ import br.com.fiap.techchallenge.oficina.atendimento.dtos.InserirItemServicoRequ
 import br.com.fiap.techchallenge.oficina.atendimento.dtos.OrdemServicoPublicaResponse;
 import br.com.fiap.techchallenge.oficina.atendimento.dtos.OrdemServicoResponse;
 import br.com.fiap.techchallenge.oficina.atendimento.dtos.StatusOSResponse;
+import br.com.fiap.techchallenge.oficina.atendimento.entities.AcessoNegadoAOrdemServicoException;
 import br.com.fiap.techchallenge.oficina.atendimento.entities.ClienteId;
 import br.com.fiap.techchallenge.oficina.atendimento.entities.OrdemServico;
 import br.com.fiap.techchallenge.oficina.atendimento.entities.OrdemServicoId;
@@ -14,6 +15,7 @@ import br.com.fiap.techchallenge.oficina.atendimento.entities.ServicoId;
 import br.com.fiap.techchallenge.oficina.atendimento.entities.StatusOS;
 import br.com.fiap.techchallenge.oficina.atendimento.entities.VeiculoId;
 import br.com.fiap.techchallenge.oficina.atendimento.gateways.ClienteGateway;
+import br.com.fiap.techchallenge.oficina.atendimento.gateways.MetricasGateway;
 import br.com.fiap.techchallenge.oficina.atendimento.gateways.NotificacaoGateway;
 import br.com.fiap.techchallenge.oficina.atendimento.gateways.OrdemServicoGateway;
 import br.com.fiap.techchallenge.oficina.atendimento.gateways.ServicoGateway;
@@ -41,6 +43,8 @@ import br.com.fiap.techchallenge.oficina.estoque.usecases.LiberarReservaUseCase;
 import br.com.fiap.techchallenge.oficina.estoque.usecases.ReservarPecaUseCase;
 import br.com.fiap.techchallenge.oficina.shared.usecases.ExecutorTransacional;
 
+import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -77,6 +81,7 @@ public class OrdemServicoController {
     private final EntregarVeiculoUseCase entregar;
     private final NotificarStatusOSUseCase notificarStatus;
     private final ExecutorTransacional tx;
+    private final MetricasGateway metricas;
     private final OrdemServicoPresenter presenter = new OrdemServicoPresenter();
 
     public OrdemServicoController(OrdemServicoGateway osGateway,
@@ -85,7 +90,8 @@ public class OrdemServicoController {
                                   ServicoGateway servicoGateway,
                                   PecaGateway pecaGateway,
                                   NotificacaoGateway notificacaoGateway,
-                                  ExecutorTransacional tx) {
+                                  ExecutorTransacional tx,
+                                  MetricasGateway metricas) {
         ReservarPecaUseCase reservarPeca = new ReservarPecaUseCase(pecaGateway);
         BaixarPecaUseCase baixarPeca = new BaixarPecaUseCase(pecaGateway);
         LiberarReservaUseCase liberarReserva = new LiberarReservaUseCase(pecaGateway);
@@ -106,10 +112,11 @@ public class OrdemServicoController {
         this.entregar = new EntregarVeiculoUseCase(osGateway);
         this.notificarStatus = new NotificarStatusOSUseCase(clienteGateway, notificacaoGateway);
         this.tx = tx;
+        this.metricas = metricas;
     }
 
     public AberturaOrdemServicoResponse abrir(AbrirOrdemServicoRequest req) {
-        OrdemServico os = executarENotificar(() -> abrir.executar(new AbrirOrdemServicoUseCase.Input(
+        OrdemServico os = executarENotificar("abrir", () -> abrir.executar(new AbrirOrdemServicoUseCase.Input(
                 new AbrirOrdemServicoUseCase.DadosCliente(
                         req.cliente().documento(), req.cliente().nome(),
                         req.cliente().email(), req.cliente().telefone()),
@@ -124,6 +131,7 @@ public class OrdemServicoController {
                         .map(p -> new AbrirOrdemServicoUseCase.ItemPecaInput(
                                 PecaId.de(p.pecaId()), p.quantidade()))
                         .toList())));
+        metricas.ordemServicoAberta();
         return presenter.apresentarAbertura(os);
     }
 
@@ -148,7 +156,7 @@ public class OrdemServicoController {
     }
 
     public OrdemServicoResponse iniciarDiagnostico(UUID id) {
-        return presenter.apresentar(executarENotificar(
+        return presenter.apresentar(executarENotificar("iniciarDiagnostico",
                 () -> iniciarDiagnostico.executar(OrdemServicoId.de(id))));
     }
 
@@ -181,17 +189,17 @@ public class OrdemServicoController {
     }
 
     public OrdemServicoResponse enviarOrcamento(UUID id) {
-        return presenter.apresentar(executarENotificar(
+        return presenter.apresentar(executarENotificar("enviarOrcamento",
                 () -> enviarOrcamento.executar(OrdemServicoId.de(id))));
     }
 
     public OrdemServicoResponse aprovarOrcamento(UUID id) {
-        return presenter.apresentar(executarENotificar(
+        return presenter.apresentar(executarENotificar("aprovarOrcamento",
                 () -> aprovarOrcamento.executar(OrdemServicoId.de(id))));
     }
 
     public OrdemServicoResponse recusarOrcamento(UUID id) {
-        return presenter.apresentar(executarENotificar(
+        return presenter.apresentar(executarENotificar("recusarOrcamento",
                 () -> recusarOrcamento.executar(OrdemServicoId.de(id))));
     }
 
@@ -200,20 +208,107 @@ public class OrdemServicoController {
         return aprovado ? aprovarOrcamento(id) : recusarOrcamento(id);
     }
 
+    // ------------------------------------------------------------------
+    // Área do cliente autenticado por CPF (fase 3)
+    //
+    // Toda operação aqui recebe o id do cliente extraído do JWT e confere a
+    // propriedade da OS antes de agir. Sem essa conferência, autenticar por CPF
+    // apenas trocaria "qualquer um com o UUID" por "qualquer cliente logado".
+    // ------------------------------------------------------------------
+
+    /** OS do próprio cliente, na mesma ordenação de prioridade da listagem interna. */
+    public List<OrdemServicoResponse> listarDoCliente(UUID clienteId) {
+        return listar(null, clienteId, null);
+    }
+
+    public StatusOSResponse consultarStatusDoCliente(UUID osId, UUID clienteId) {
+        OrdemServico os = tx.emTransacao(() -> buscarDoCliente(osId, clienteId));
+        return presenter.apresentarStatus(os);
+    }
+
+    public OrdemServicoResponse consultarDoCliente(UUID osId, UUID clienteId) {
+        OrdemServico os = tx.emTransacao(() -> buscarDoCliente(osId, clienteId));
+        return presenter.apresentar(os);
+    }
+
+    /**
+     * Aprova ou recusa o orçamento em nome do próprio cliente. A propriedade é
+     * verificada <b>dentro</b> da mesma transação da decisão, para que a checagem
+     * e a mudança de estado não possam divergir.
+     */
+    public OrdemServicoResponse decidirOrcamentoDoCliente(UUID osId, UUID clienteId, boolean aprovado) {
+        String nome = aprovado ? "aprovarOrcamento" : "recusarOrcamento";
+        OrdemServico os = executarENotificar(nome, () -> {
+            buscarDoCliente(osId, clienteId);
+            OrdemServicoId id = OrdemServicoId.de(osId);
+            return aprovado ? aprovarOrcamento.executar(id) : recusarOrcamento.executar(id);
+        });
+        return presenter.apresentar(os);
+    }
+
+    /**
+     * Carrega a OS garantindo que ela pertence ao cliente informado.
+     *
+     * @throws AcessoNegadoAOrdemServicoException se a OS for de outro cliente
+     */
+    private OrdemServico buscarDoCliente(UUID osId, UUID clienteId) {
+        OrdemServico os = buscar.executar(OrdemServicoId.de(osId));
+        if (!os.clienteId().equals(ClienteId.de(clienteId))) {
+            throw new AcessoNegadoAOrdemServicoException(OrdemServicoId.de(osId));
+        }
+        return os;
+    }
+
     public OrdemServicoResponse finalizar(UUID id) {
-        return presenter.apresentar(executarENotificar(
+        return presenter.apresentar(executarENotificar("finalizar",
                 () -> finalizar.executar(OrdemServicoId.de(id))));
     }
 
     public OrdemServicoResponse entregar(UUID id) {
-        return presenter.apresentar(executarENotificar(
+        return presenter.apresentar(executarENotificar("entregar",
                 () -> entregar.executar(OrdemServicoId.de(id))));
     }
 
-    /** Roda a operação em transação e, só depois do commit, notifica o cliente. */
-    private OrdemServico executarENotificar(Supplier<OrdemServico> operacao) {
-        OrdemServico os = tx.emTransacao(operacao::get);
+    /**
+     * Roda a operação em transação e, só depois do commit, notifica o cliente e
+     * registra a telemetria de negócio.
+     *
+     * @param nome rótulo curto da operação, usado como tag da métrica de falha.
+     */
+    private OrdemServico executarENotificar(String nome, Supplier<OrdemServico> operacao) {
+        OrdemServico os;
+        try {
+            os = tx.emTransacao(operacao::get);
+        } catch (RuntimeException e) {
+            metricas.falhaProcessamento(nome);
+            throw e;
+        }
         notificarStatus.executar(os);
+        registrarFaseConcluida(os);
         return os;
+    }
+
+    /**
+     * Mede quanto tempo a OS passou na fase que <i>acabou</i> de terminar, a partir
+     * dos marcos temporais da própria entidade. Cada transição fecha exatamente uma
+     * fase — por isso não há risco de contar a mesma duração duas vezes.
+     */
+    private void registrarFaseConcluida(OrdemServico os) {
+        switch (os.status()) {
+            case EM_EXECUCAO -> registrar(StatusOS.EM_DIAGNOSTICO,
+                    os.diagnosticoIniciadoEm(), os.execucaoIniciadaEm());
+            case FINALIZADA -> registrar(StatusOS.EM_EXECUCAO,
+                    os.execucaoIniciadaEm(), os.finalizadaEm());
+            case ENTREGUE -> registrar(StatusOS.FINALIZADA,
+                    os.finalizadaEm(), os.entregueEm());
+            default -> { /* demais status não encerram uma fase medida */ }
+        }
+    }
+
+    private void registrar(StatusOS fase, OffsetDateTime inicio, OffsetDateTime fim) {
+        if (inicio == null || fim == null) {
+            return;
+        }
+        metricas.faseConcluida(fase.descricao(), Duration.between(inicio, fim));
     }
 }

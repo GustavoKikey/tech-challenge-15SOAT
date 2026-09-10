@@ -38,7 +38,7 @@ class VeiculoUseCasesTest {
 
     private final ClienteId clienteId = ClienteId.novo();
     private final Cliente clienteMock = Cliente.reconstituir(
-            clienteId, "Ana", Documento.de("52998224725"), null, null);
+            clienteId, "Ana", Documento.de("52998224725"), null, null, true);
     private final Placa placa = Placa.de("ABC1234");
 
     @Test
@@ -88,7 +88,7 @@ class VeiculoUseCasesTest {
         Veiculo existente = Veiculo.novo(placa, "Fiat", "Uno", 2010, clienteId);
         ClienteId novoDono = ClienteId.novo();
         Cliente novoDonoCliente = Cliente.reconstituir(novoDono, "Bia",
-                Documento.de("11222333000181"), null, null);
+                Documento.de("11222333000181"), null, null, true);
 
         when(veiculoRepo.buscarPorId(existente.id())).thenReturn(Optional.of(existente));
         when(clienteRepo.buscarPorId(novoDono)).thenReturn(Optional.of(novoDonoCliente));

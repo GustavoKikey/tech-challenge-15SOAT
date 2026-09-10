@@ -41,3 +41,16 @@ data:
   # deixando folga para metaspace/threads/nativo e mantendo o consumo
   # total abaixo do alvo de 80% do HPA (evita flapping por memória).
   JAVA_OPTS: "-XX:MaxRAMPercentage=50.0"
+
+  # Observabilidade (fase 3). Identifica o ambiente nos dashboards do New
+  # Relic e define para onde os traces OTLP são enviados. A license key NÃO
+  # entra aqui — vem do Secret oficina-newrelic (ver 30-deployment.yaml).
+  # Endpoint US: https://otlp.nr-data.net:4318 · EU: https://otlp.eu01.nr-data.net:4318
+  AMBIENTE: "prod"
+  OTLP_ENDPOINT: "https://otlp.nr-data.net:4318"
+
+  # Chave-liga/desliga do envio de traces. Mantido em "none" enquanto não há
+  # license key: com o exportador ligado e sem chave, o New Relic recusa cada
+  # lote e a aplicação loga "Failed to export spans" em loop. Trocar para
+  # "otlp" no mesmo momento em que o Secret oficina-newrelic for criado.
+  OTEL_TRACES_EXPORTER: "none"

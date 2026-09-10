@@ -24,11 +24,23 @@ import java.util.UUID;
  * {@link OrdemServicoController}: consulta resumida, consulta de status e o
  * canal de <b>notificação externa</b> da decisão do cliente sobre o orçamento
  * (aprovação/recusa vinda de link de e-mail, portal ou sistema parceiro).
+ *
+ * @deprecated Desde a fase 3, substituído por
+ *             {@link AreaClienteResource} ({@code /cliente/ordens-servico}), que
+ *             autentica o cliente por CPF e confere a propriedade da OS.
+ *             <p>Estes endpoints autorizam qualquer portador do UUID da OS —
+ *             inclusive a <b>aprovar o orçamento</b>. Mantidos porque compõem o
+ *             contrato entregue na fase 2 (canal de notificação externa) e
+ *             removê-los quebraria integrações existentes; a proteção passa a
+ *             ser feita na borda, com API key no API Gateway.
+ *             <p>Ver ADR 002.
  */
+@Deprecated(since = "fase-3")
 @Path("/publico/ordens-servico")
 @Produces(MediaType.APPLICATION_JSON)
 @PermitAll
-@Tag(name = "Público", description = "Consulta pública de OS e decisão de orçamento do cliente")
+@Tag(name = "Público (descontinuado)",
+     description = "Substituído por /cliente/ordens-servico (autenticação por CPF). Mantido para compatibilidade da fase 2; será protegido por API key no API Gateway.")
 public class PublicoOrdemServicoResource {
 
     private final OrdemServicoController controller;
@@ -39,7 +51,7 @@ public class PublicoOrdemServicoResource {
 
     @GET
     @Path("/{id}")
-    @Operation(summary = "Consulta resumida de uma OS para acompanhamento do cliente")
+    @Operation(summary = "Consulta resumida de uma OS para acompanhamento do cliente", deprecated = true)
     @APIResponse(responseCode = "404", description = "OS não encontrada")
     public OrdemServicoPublicaResponse buscar(@PathParam("id") UUID id) {
         return controller.consultarPublico(id);
@@ -47,7 +59,7 @@ public class PublicoOrdemServicoResource {
 
     @GET
     @Path("/{id}/status")
-    @Operation(summary = "Consulta de status da OS: situação atual com descrição amigável")
+    @Operation(summary = "Consulta de status da OS: situação atual com descrição amigável", deprecated = true)
     @APIResponse(responseCode = "404", description = "OS não encontrada")
     public StatusOSResponse consultarStatus(@PathParam("id") UUID id) {
         return controller.consultarStatus(id);
@@ -56,7 +68,7 @@ public class PublicoOrdemServicoResource {
     @POST
     @Path("/{id}/orcamento/decisao")
     @Consumes(MediaType.APPLICATION_JSON)
-    @Operation(summary = "Recebe notificação externa de aprovação ou recusa do orçamento pelo cliente")
+    @Operation(summary = "Recebe notificação externa de aprovação ou recusa do orçamento pelo cliente", deprecated = true)
     @APIResponse(responseCode = "200", description = "Decisão registrada")
     @APIResponse(responseCode = "404", description = "OS não encontrada")
     @APIResponse(responseCode = "409", description = "OS não está aguardando aprovação")

@@ -5,6 +5,7 @@ import br.com.fiap.techchallenge.oficina.atendimento.controllers.OrdemServicoCon
 import br.com.fiap.techchallenge.oficina.atendimento.controllers.ServicoController;
 import br.com.fiap.techchallenge.oficina.atendimento.controllers.VeiculoController;
 import br.com.fiap.techchallenge.oficina.atendimento.gateways.ClienteGateway;
+import br.com.fiap.techchallenge.oficina.atendimento.gateways.MetricasGateway;
 import br.com.fiap.techchallenge.oficina.atendimento.gateways.NotificacaoGateway;
 import br.com.fiap.techchallenge.oficina.atendimento.gateways.OrdemServicoGateway;
 import br.com.fiap.techchallenge.oficina.atendimento.gateways.ServicoGateway;
@@ -49,8 +50,9 @@ public class AtendimentoBeans {
                                                   ServicoGateway servicoGateway,
                                                   PecaGateway pecaGateway,
                                                   NotificacaoGateway notificacaoGateway,
-                                                  ExecutorTransacional tx) {
+                                                  ExecutorTransacional tx,
+                                                  MetricasGateway metricas) {
         return new OrdemServicoController(osGateway, clienteGateway, veiculoGateway,
-                servicoGateway, pecaGateway, notificacaoGateway, tx);
+                servicoGateway, pecaGateway, notificacaoGateway, tx, metricas);
     }
 }
