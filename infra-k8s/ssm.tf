@@ -28,7 +28,7 @@ resource "aws_ssm_parameter" "subnet_ids" {
   name        = "${local.prefixo_ssm}/rede/subnet-ids"
   description = "Subnets para RDS subnet group e para a Lambda na VPC"
   type        = "StringList"
-  value       = join(",", data.aws_subnets.default.ids)
+  value       = join(",", local.subnets)
   overwrite   = true
   tags        = local.tags
 }

@@ -71,7 +71,7 @@ resource "aws_eks_cluster" "este" {
   version  = var.versao_kubernetes
 
   vpc_config {
-    subnet_ids         = data.aws_subnets.default.ids
+    subnet_ids         = local.subnets
     security_group_ids = [aws_security_group.cluster.id]
     # Endpoint público: o runner do GitHub Actions precisa alcançar a API
     # do cluster para o kubectl apply. Numa operação real, isso viria
@@ -91,7 +91,7 @@ resource "aws_eks_node_group" "principal" {
   cluster_name    = aws_eks_cluster.este.name
   node_group_name = "${local.nome_cluster}-nos"
   node_role_arn   = local.role_nos
-  subnet_ids      = data.aws_subnets.default.ids
+  subnet_ids      = local.subnets
 
   instance_types = [var.tipo_instancia_no]
 

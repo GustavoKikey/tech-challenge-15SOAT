@@ -25,6 +25,29 @@ data "aws_subnets" "default" {
 }
 
 # ---------------------------------------------------------------------
+# Nem toda AZ aceita control plane de EKS
+# ---------------------------------------------------------------------
+# A VPC default cobre todas as AZs da região, mas o EKS recusa criar o
+# control plane em algumas delas — em us-east-1, a us-east-1e. O erro é
+# explícito (UnsupportedAvailabilityZoneException), mas só aparece depois
+# de os security groups já terem sido criados.
+#
+# Por isso as subnets são resolvidas uma a uma, para filtrar por AZ.
+
+data "aws_subnet" "cada" {
+  for_each = toset(data.aws_subnets.default.ids)
+  id       = each.value
+}
+
+locals {
+  # Subnets utilizáveis pelo cluster, pelo RDS e pela Lambda.
+  subnets = sort([
+    for s in data.aws_subnet.cada : s.id
+    if !contains(var.azs_sem_eks, s.availability_zone)
+  ])
+}
+
+# ---------------------------------------------------------------------
 # Security groups — três papéis, três grupos
 # ---------------------------------------------------------------------
 

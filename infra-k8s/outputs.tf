@@ -20,7 +20,7 @@ output "sg_banco_id" {
 
 output "subnet_ids" {
   description = "Subnets da VPC default."
-  value       = data.aws_subnets.default.ids
+  value       = local.subnets
 }
 
 output "kubeconfig" {

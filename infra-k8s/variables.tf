@@ -68,3 +68,16 @@ variable "role_arn_nos" {
   type        = string
   default     = ""
 }
+
+variable "azs_sem_eks" {
+  description = <<-EOT
+    Availability zones que não aceitam control plane de EKS e precisam ser
+    excluídas das subnets do cluster.
+
+    Em us-east-1 é a us-east-1e — a AWS recusa com
+    UnsupportedAvailabilityZoneException. A lista é explícita porque não há
+    API que a exponha; se mudar, o erro do apply diz quais AZs são válidas.
+  EOT
+  type        = list(string)
+  default     = ["us-east-1e"]
+}

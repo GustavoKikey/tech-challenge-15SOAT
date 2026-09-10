@@ -82,10 +82,12 @@ resource "aws_db_subnet_group" "este" {
 }
 
 resource "aws_db_instance" "este" {
-  identifier     = local.identifier
-  engine         = "postgres"
-  engine_version = var.versao_postgres
-  instance_class = var.classe_instancia
+  identifier = local.identifier
+  engine     = "postgres"
+  # Só o major: a AWS resolve a minor mais recente disponível.
+  engine_version             = var.versao_postgres
+  auto_minor_version_upgrade = true
+  instance_class             = var.classe_instancia
 
   db_name  = var.nome_banco
   username = var.usuario_master
@@ -115,8 +117,7 @@ resource "aws_db_instance" "este" {
   # conexão da Lambda fica invisível.
   enabled_cloudwatch_logs_exports = ["postgresql"]
 
-  auto_minor_version_upgrade = true
-  apply_immediately          = var.ambiente != "prod"
+  apply_immediately = var.ambiente != "prod"
 
   tags = local.tags
 }

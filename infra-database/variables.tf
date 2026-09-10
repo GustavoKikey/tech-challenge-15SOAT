@@ -21,9 +21,17 @@ variable "projeto" {
 }
 
 variable "versao_postgres" {
-  description = "Versão do PostgreSQL. Mesma dos testes (Testcontainers) e da fase 2."
+  description = <<-EOT
+    Versão do PostgreSQL. Fixada no MAJOR ("16"), não no minor: a AWS
+    remove versões menores do catálogo conforme lança correções, e um
+    minor fixo faz o apply falhar meses depois com
+    "Cannot find version X.Y for postgres". Com apenas o major, o RDS
+    escolhe a minor disponível mais recente.
+
+    O major 16 é o mesmo dos testes (Testcontainers) e da fase 2.
+  EOT
   type        = string
-  default     = "16.4"
+  default     = "16"
 }
 
 variable "classe_instancia" {
