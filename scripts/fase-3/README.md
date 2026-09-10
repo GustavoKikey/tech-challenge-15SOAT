@@ -14,9 +14,27 @@ liga o lab  →  00-diagnostico  →  01-bootstrap (1x)  →  02-aplicar  →  t
 | --- | --- | --- |
 | `00-diagnostico-lab.sh` | **Sempre primeiro** | Verifica credenciais, `LabRole`, serviços, VPC e o que já está ligado. Diz **PLANO A ou B**. Somente leitura. |
 | `01-bootstrap.sh SUFIXO` | Uma vez por conta | Cria o bucket S3 + tabela DynamoDB do state do Terraform |
-| `02-aplicar.sh hom` | Cada sessão | Aplica `infra-k8s` → `infra-database` → `lambda-auth` na ordem |
+| `02-aplicar.sh hom` | Quando a infraestrutura **não existe** | Aplica `infra-k8s` → `infra-database` → `lambda-auth` na ordem |
+| `03-observabilidade.sh hom` | Depois de aplicar | Instala o agente do New Relic no cluster |
+| `04-retomar.sh hom` | Quando a infraestrutura **existe** e a sessão reiniciou | Refaz tudo que depende das credenciais e espera o ambiente voltar |
+| `seed-demo.sh` | Antes de demonstrar | Catálogo, ordens de serviço e transições de fase |
+| `liberar-meu-ip.sh` | Ao trocar de rede | Abre o balanceador para o seu IP (`--fechar` tranca) |
 | `99-destruir.sh hom` | **Antes de fechar o lab** | Derruba tudo na ordem inversa |
 | `renovar-secrets.sh USUARIO` | Cada sessão, se usar CI | Reenvia as credenciais de 4h para os 4 repos do GitHub |
+
+### 02-aplicar ou 04-retomar?
+
+Encerrar a sessão do lab **não** apaga a infraestrutura — o cluster, o banco e a
+Function continuam existindo. O que expira são as credenciais.
+
+- Se você **não** rodou `99-destruir.sh`: `04-retomar.sh`. Ele valida as credenciais
+  novas, espera os nós e o banco voltarem, renova os secrets do GitHub, religa a
+  aplicação se ela caiu enquanto o banco subia, e devolve a URL.
+- Se você **rodou** `99-destruir.sh`: `02-aplicar.sh` + `03-observabilidade.sh`. Aí a
+  infraestrutura nasce de novo — e **os endereços mudam**: outro API Gateway, outro
+  balanceador. Qualquer link anotado antes deixa de valer.
+
+O `04-retomar.sh` detecta o segundo caso e avisa em vez de falhar pela metade.
 
 ## Passo a passo da primeira vez
 
