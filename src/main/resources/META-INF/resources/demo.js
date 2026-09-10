@@ -174,7 +174,7 @@ const PASSOS = [
  */
 const PASSOS_CLIENTE = [
     {
-        grupo: "6 · Fase 3 — Cliente por CPF (API Gateway + Function)",
+        grupo: "8 · Fase 3 — Cliente por CPF (API Gateway + Function)",
         titulo: "CPF inválido — a Function recusa antes do banco",
         descricao: "A validação do dígito verificador acontece na Function, antes de qualquer consulta. CPF malformado nem chega ao Postgres. Esperado: 400.",
         metodo: "POST",
@@ -184,7 +184,7 @@ const PASSOS_CLIENTE = [
         esperado: 400
     },
     {
-        grupo: "6 · Fase 3 — Cliente por CPF (API Gateway + Function)",
+        grupo: "8 · Fase 3 — Cliente por CPF (API Gateway + Function)",
         titulo: "CPF válido, cliente não cadastrado",
         descricao: "Esperado: 401 — e a resposta é idêntica à de um cliente inativo, de propósito. Respostas diferentes transformariam este endpoint num consultor de cadastro: daria para descobrir quem é cliente da oficina pelo formato do erro.",
         metodo: "POST",
@@ -194,7 +194,7 @@ const PASSOS_CLIENTE = [
         esperado: 401
     },
     {
-        grupo: "6 · Fase 3 — Cliente por CPF (API Gateway + Function)",
+        grupo: "8 · Fase 3 — Cliente por CPF (API Gateway + Function)",
         titulo: "Autenticar cliente cadastrado",
         descricao: "A Function consulta a base, confirma que o cliente existe e está ativo, e assina um JWT RS256 com validade de 30 minutos — bem menor que as 8 horas do token de funcionário. A aplicação não sabe autenticar cliente: ela só confere a assinatura com a chave pública.",
         metodo: "POST",
@@ -207,7 +207,7 @@ const PASSOS_CLIENTE = [
         }
     },
     {
-        grupo: "7 · Fase 3 — Área do cliente (rotas protegidas)",
+        grupo: "9 · Fase 3 — Área do cliente (rotas protegidas)",
         titulo: "As ordens de serviço do cliente autenticado",
         descricao: "Repare que não há id de cliente na URL. Ele vem do claim sub do token — a rota devolve as OS de quem está autenticado, e não de quem for pedido.",
         metodo: "GET",
@@ -218,7 +218,7 @@ const PASSOS_CLIENTE = [
         }
     },
     {
-        grupo: "7 · Fase 3 — Área do cliente (rotas protegidas)",
+        grupo: "9 · Fase 3 — Área do cliente (rotas protegidas)",
         titulo: "Tentar a OS de OUTRO cliente",
         descricao: "Cole no chip “OS de outro” o id de uma ordem em andamento que pertença a outro cliente. Esperado: 403 — existe, e não é sua. A checagem de dono acontece dentro da transação, junto da leitura.",
         metodo: "GET",
@@ -227,7 +227,7 @@ const PASSOS_CLIENTE = [
         esperado: 403
     },
     {
-        grupo: "7 · Fase 3 — Área do cliente (rotas protegidas)",
+        grupo: "9 · Fase 3 — Área do cliente (rotas protegidas)",
         titulo: "Sem token — negado por padrão",
         descricao: "A aplicação nega por padrão: rota que não declara quem pode acessar não fica aberta, fica fechada. Esperado: 401.",
         metodo: "GET",
