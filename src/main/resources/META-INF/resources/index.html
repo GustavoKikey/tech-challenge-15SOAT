@@ -3,22 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oficina — Demonstração Fase 2</title>
+    <title>Oficina — Demonstração Fase 3</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔧</text></svg>">
     <link rel="stylesheet" href="demo.css">
 </head>
 <body>
 <header>
     <div>
-        <h1>🔧 Oficina Mecânica — Tech Challenge <span class="tag-fase">Fase 2 · 15SOAT</span></h1>
-        <p class="subtitle">Painel de demonstração das APIs da Fase 2 — cada passo mostra o endpoint, o payload enviado e a resposta.</p>
+        <h1>🔧 Oficina Mecânica — Tech Challenge <span class="tag-fase">Fase 3 · 15SOAT</span>
+            <span class="tag-ambiente" id="tag-ambiente" title="Ambiente em execução">local</span></h1>
+        <p class="subtitle">Painel de demonstração das APIs — cada passo mostra o endpoint, o payload enviado e a
+            resposta. Os passos 6 e 7 saem para o API Gateway: a autenticação por CPF é servida por uma Function,
+            fora da aplicação.</p>
     </div>
     <div class="controles">
         <div id="contexto" class="contexto">
             <span class="chip" id="chip-auth">🔒 não autenticado</span>
+            <span class="chip" id="chip-cliente">👤 cliente não autenticado</span>
             <span class="chip" id="chip-servico">serviçoId: —</span>
             <span class="chip" id="chip-peca">peçaId: —</span>
             <span class="chip" id="chip-os">OS: —</span>
+            <span class="chip" id="chip-os-outro">OS de outro: —</span>
         </div>
         <div class="botoes-sessao">
             <button id="btn-sair" class="btn-controle" title="Descarta o token JWT desta sessão">🔓 Sair</button>
@@ -29,6 +34,12 @@
 </header>
 
 <main>
+    <div id="aviso-gateway" class="aviso" hidden>
+        <strong>Sem API Gateway.</strong> Os passos de autenticação por CPF não aparecem porque
+        <code>/config-demo</code> não devolveu um endereço — é o esperado ao rodar a aplicação isolada, sem a
+        infraestrutura da fase 3 provisionada. O restante do painel funciona normalmente.
+    </div>
+
     <section id="passos" class="passos">
         <!-- cards gerados pelo demo.js -->
     </section>
