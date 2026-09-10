@@ -167,8 +167,11 @@ jobs:
           # RDS só existe depois que o repo 3 aplicou.
           kubectl -n "$NAMESPACE" patch configmap oficina-app-config \
             --type merge -p "{\"data\":{\"DB_URL\":\"${{ steps.ssm.outputs.jdbc }}\",\"AMBIENTE\":\"${AMBIENTE}\"}}"
+          # 'app' e o nome do CONTAINER (k8s/30-deployment.yaml), nao o do
+          # Deployment: 'set image' casa pelo nome do container e falha com
+          # "unable to find container named ..." se receber o outro.
           kubectl -n "$NAMESPACE" set image deployment/oficina-app \
-            oficina-app="${{ needs.imagem.outputs.imagem }}"
+            app="${{ needs.imagem.outputs.imagem }}"
           kubectl -n "$NAMESPACE" rollout status deployment/oficina-app --timeout=600s
 
       - name: Smoke test
