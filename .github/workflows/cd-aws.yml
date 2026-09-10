@@ -127,9 +127,14 @@ jobs:
           cluster=$(aws ssm get-parameter --name "$prefixo/eks/cluster-name" --query Parameter.Value --output text)
           jdbc=$(aws ssm get-parameter --name "$prefixo/db/jdbc-url" --query Parameter.Value --output text)
           secret=$(aws ssm get-parameter --name "$prefixo/db/secret-arn" --query Parameter.Value --output text)
+          # A URL do Gateway não é usada pela aplicação, e sim repassada ao
+          # painel de demonstração no navegador. Ausente não é erro: sem
+          # Gateway provisionado o painel esconde o bloco de CPF.
+          gateway=$(aws ssm get-parameter --name "$prefixo/apigw/invoke-url" --query Parameter.Value --output text 2>/dev/null || echo "")
           echo "cluster=$cluster" >> "$GITHUB_OUTPUT"
           echo "jdbc=$jdbc"       >> "$GITHUB_OUTPUT"
           echo "secret=$secret"   >> "$GITHUB_OUTPUT"
+          echo "gateway=$gateway" >> "$GITHUB_OUTPUT"
           echo "Cluster: $cluster"
 
       - name: Aponta o kubectl para o cluster
@@ -165,7 +170,7 @@ jobs:
           # DB_URL vem do SSM, não do ConfigMap versionado: o endpoint do
           # RDS só existe depois que o repo 3 aplicou.
           kubectl -n "$NAMESPACE" patch configmap oficina-app-config \
-            --type merge -p "{\"data\":{\"DB_URL\":\"${{ steps.ssm.outputs.jdbc }}\",\"AMBIENTE\":\"${AMBIENTE}\"}}"
+            --type merge -p "{\"data\":{\"DB_URL\":\"${{ steps.ssm.outputs.jdbc }}\",\"AMBIENTE\":\"${AMBIENTE}\",\"API_GATEWAY_URL\":\"${{ steps.ssm.outputs.gateway }}\"}}"
           # A chave-liga/desliga da telemetria é o SDK inteiro, não o
           # exportador: é o SDK que cria os spans que injetam traceId no log
           # e o exemplar de trace nas métricas — exportar é só o último

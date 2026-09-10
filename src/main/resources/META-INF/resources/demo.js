@@ -1,5 +1,5 @@
 /*
- * Painel de demonstração das APIs — Tech Challenge Fase 2.
+ * Painel de demonstração das APIs — Tech Challenge Fase 3.
  *
  * Sem framework: os passos são declarados no array PASSOS e renderizados como
  * cards. Cada execução mostra método + endpoint + payload resolvido + resposta,
@@ -8,9 +8,32 @@
  *
  * Além do roteiro guiado há o MODO LIVRE (monte qualquer requisição, com
  * presets de todos os endpoints) e controles de sessão/contexto no cabeçalho.
+ *
+ * Dois emissores de token, um painel
+ * ---------------------------------
+ * O funcionário se autentica na própria aplicação, com usuário e senha. O
+ * cliente se autentica por CPF numa Function serverless, atrás do API Gateway
+ * — outro domínio, outro processo. O painel guarda os dois tokens separados e
+ * envia o que o passo pedir: passo com `perfil: "cliente"` manda o token do
+ * cliente, os demais mandam o do funcionário.
+ *
+ * Guardar um token só, sobrescrevendo, faria os passos se atropelarem — e o
+ * 401 resultante pareceria falha de autenticação em vez de troca de contexto.
  */
 
-const estado = { accessToken: null, servicoId: null, pecaId: null, osId: null };
+const estado = {
+    accessToken: null,      // funcionário — emitido pela aplicação
+    tokenCliente: null,     // cliente — emitido pela Function, via API Gateway
+    clienteNome: null,
+    servicoId: null,
+    pecaId: null,
+    osId: null,
+    osOutroCliente: null    // OS de outro cliente, para provar o isolamento
+};
+
+/* Preenchido no boot por /config-demo, que repassa o que o deploy leu do
+   Parameter Store. Vazio significa que não há Gateway provisionado. */
+let API_GATEWAY = "";
 
 const PASSOS = [
     {
@@ -142,6 +165,78 @@ const PASSOS = [
     }
 ];
 
+
+/* ---------------- fase 3: autenticação do cliente por CPF ----------------
+ *
+ * Estes passos saem do host da aplicação: o path começa com "@gateway", e o
+ * motor troca esse prefixo pelo endereço do API Gateway. Os passos seguintes
+ * voltam a ser relativos — a área do cliente é servida pelo cluster.
+ */
+const PASSOS_CLIENTE = [
+    {
+        grupo: "6 · Fase 3 — Cliente por CPF (API Gateway + Function)",
+        titulo: "CPF inválido — a Function recusa antes do banco",
+        descricao: "A validação do dígito verificador acontece na Function, antes de qualquer consulta. CPF malformado nem chega ao Postgres. Esperado: 400.",
+        metodo: "POST",
+        path: "@gateway/auth/cliente",
+        perfil: "publico",
+        payload: { cpf: "111.111.111-11" },
+        esperado: 400
+    },
+    {
+        grupo: "6 · Fase 3 — Cliente por CPF (API Gateway + Function)",
+        titulo: "CPF válido, cliente não cadastrado",
+        descricao: "Esperado: 401 — e a resposta é idêntica à de um cliente inativo, de propósito. Respostas diferentes transformariam este endpoint num consultor de cadastro: daria para descobrir quem é cliente da oficina pelo formato do erro.",
+        metodo: "POST",
+        path: "@gateway/auth/cliente",
+        perfil: "publico",
+        payload: { cpf: "111.444.777-35" },
+        esperado: 401
+    },
+    {
+        grupo: "6 · Fase 3 — Cliente por CPF (API Gateway + Function)",
+        titulo: "Autenticar cliente cadastrado",
+        descricao: "A Function consulta a base, confirma que o cliente existe e está ativo, e assina um JWT RS256 com validade de 30 minutos — bem menor que as 8 horas do token de funcionário. A aplicação não sabe autenticar cliente: ela só confere a assinatura com a chave pública.",
+        metodo: "POST",
+        path: "@gateway/auth/cliente",
+        perfil: "publico",
+        payload: { cpf: "529.982.247-25" },
+        captura: (body) => {
+            estado.tokenCliente = body.accessToken;
+            estado.clienteNome = body.cliente ? body.cliente.nome : null;
+        }
+    },
+    {
+        grupo: "7 · Fase 3 — Área do cliente (rotas protegidas)",
+        titulo: "As ordens de serviço do cliente autenticado",
+        descricao: "Repare que não há id de cliente na URL. Ele vem do claim sub do token — a rota devolve as OS de quem está autenticado, e não de quem for pedido.",
+        metodo: "GET",
+        path: "/cliente/ordens-servico",
+        perfil: "cliente",
+        captura: (body) => {
+            if (Array.isArray(body) && body.length) estado.osId = body[0].id;
+        }
+    },
+    {
+        grupo: "7 · Fase 3 — Área do cliente (rotas protegidas)",
+        titulo: "Tentar a OS de OUTRO cliente",
+        descricao: "Cole no chip “OS de outro” o id de uma ordem em andamento que pertença a outro cliente. Esperado: 403 — existe, e não é sua. A checagem de dono acontece dentro da transação, junto da leitura.",
+        metodo: "GET",
+        path: "/cliente/ordens-servico/{{osOutroCliente}}",
+        perfil: "cliente",
+        esperado: 403
+    },
+    {
+        grupo: "7 · Fase 3 — Área do cliente (rotas protegidas)",
+        titulo: "Sem token — negado por padrão",
+        descricao: "A aplicação nega por padrão: rota que não declara quem pode acessar não fica aberta, fica fechada. Esperado: 401.",
+        metodo: "GET",
+        path: "/cliente/ordens-servico",
+        perfil: "publico",
+        esperado: 401
+    }
+];
+
 /* Presets do MODO LIVRE — cobre os demais endpoints da API. */
 const PRESETS = [
     { rotulo: "— escolha um preset —" },
@@ -181,9 +276,20 @@ function atualizarContexto() {
     const auth = $("#chip-auth");
     auth.textContent = estado.accessToken ? "🔓 autenticado (clique p/ copiar token)" : "🔒 não autenticado";
     auth.classList.toggle("ativo", !!estado.accessToken);
+    const cli = $("#chip-cliente");
+    if (cli) {
+        cli.textContent = estado.tokenCliente
+            ? `👤 ${estado.clienteNome || "cliente"} autenticado`
+            : "👤 cliente não autenticado";
+        cli.classList.toggle("ativo", !!estado.tokenCliente);
+        cli.title = estado.tokenCliente
+            ? "Token emitido pela Function, via API Gateway"
+            : "Execute o passo de autenticação por CPF";
+    }
     marcarChip("#chip-servico", "serviçoId", estado.servicoId);
     marcarChip("#chip-peca", "peçaId", estado.pecaId);
     marcarChip("#chip-os", "OS", estado.osId);
+    marcarChip("#chip-os-outro", "OS de outro", estado.osOutroCliente);
 }
 
 function marcarChip(sel, rotulo, valor) {
@@ -197,8 +303,10 @@ function marcarChip(sel, rotulo, valor) {
 
 function sair() {
     estado.accessToken = null;
+    estado.tokenCliente = null;
+    estado.clienteNome = null;
     atualizarContexto();
-    mostrarResposta(200, "Sessão local encerrada — o token JWT foi descartado.\n" +
+    mostrarResposta(200, "Sessão local encerrada — os dois tokens foram descartados.\n" +
         "Os próximos passos protegidos responderão 401 até novo login.");
     $("#resp-status").textContent = "logout";
     $("#resp-status").className = "status-badge ok";
@@ -208,6 +316,7 @@ function limparContexto() {
     estado.servicoId = null;
     estado.pecaId = null;
     estado.osId = null;
+    estado.osOutroCliente = null;
     atualizarContexto();
 }
 
@@ -230,13 +339,22 @@ function copiarToken() {
 
 /* ---------------- execução de requisições ---------------- */
 
-async function chamarApi(metodo, url, corpo) {
+/* Qual token vai no cabeçalho depende do perfil do passo:
+   "cliente" usa o emitido pela Function; "publico" não manda nenhum (é o que
+   prova o 401 da rota protegida); o padrão é o token de funcionário. */
+function autorizacao(perfil) {
+    if (perfil === "publico") return {};
+    const token = perfil === "cliente" ? estado.tokenCliente : estado.accessToken;
+    return token ? { "Authorization": "Bearer " + token } : {};
+}
+
+async function chamarApi(metodo, url, corpo, perfil) {
     mostrarRequisicao(metodo, url, corpo);
     const resp = await fetch(url, {
         method: metodo,
         headers: {
             ...(corpo ? { "Content-Type": "application/json" } : {}),
-            ...(estado.accessToken ? { "Authorization": "Bearer " + estado.accessToken } : {})
+            ...autorizacao(perfil)
         },
         body: corpo ? JSON.stringify(corpo) : undefined
     });
@@ -295,7 +413,14 @@ function registrarHistorico(metodo, url, status, corpoTexto, corpoReq) {
     $("#historico").prepend(li);
 }
 
-function validarEExecutar(metodo, pathBruto, textoPayload, inline, botao, captura) {
+/* "@gateway/auth/cliente" -> "https://xxx.execute-api.../auth/cliente".
+   Path sem o prefixo continua relativo, servido pelo mesmo host do painel. */
+function resolverBase(path) {
+    if (!path.startsWith("@gateway")) return path;
+    return API_GATEWAY + path.slice("@gateway".length);
+}
+
+function validarEExecutar(metodo, pathBruto, textoPayload, inline, botao, captura, perfil, esperado) {
     let corpo = null;
     if (textoPayload && textoPayload.trim()) {
         try {
@@ -307,7 +432,12 @@ function validarEExecutar(metodo, pathBruto, textoPayload, inline, botao, captur
         }
     }
 
-    const url = resolver(pathBruto);
+    const url = resolverBase(resolver(pathBruto));
+    if (url.startsWith("@gateway")) {
+        inline.textContent = "endereço do API Gateway não disponível (/config-demo veio vazio)";
+        inline.className = "resultado-inline erro";
+        return;
+    }
     const faltando = pendencias(url).concat(corpo ? pendencias(JSON.stringify(corpo)) : []);
     if (faltando.length) {
         inline.textContent = `contexto faltando: ${faltando.join(", ")} (execute o passo que gera ou edite o chip no topo)`;
@@ -320,11 +450,16 @@ function validarEExecutar(metodo, pathBruto, textoPayload, inline, botao, captur
     inline.className = "resultado-inline";
     const card = botao.closest(".card");
 
-    chamarApi(metodo, url, corpo).then(({ status, ok, texto }) => {
-        inline.textContent = `HTTP ${status} ${ok ? "✔" : "✘"}`;
-        inline.className = "resultado-inline " + (ok ? "ok" : "erro");
-        card.classList.toggle("concluido", ok);
-        card.classList.toggle("falhou", !ok);
+    chamarApi(metodo, url, corpo, perfil).then(({ status, ok, texto }) => {
+        // Passo com `esperado` demonstra uma recusa: 401 e 403 SÃO o resultado
+        // correto ali. Marcá-los como falha ensinaria a ler vermelho como erro
+        // justamente onde o vermelho é a prova.
+        const sucesso = esperado ? status === esperado : ok;
+        inline.textContent = `HTTP ${status} ${sucesso ? "✔" : "✘"}`
+            + (esperado ? ` (esperado ${esperado})` : "");
+        inline.className = "resultado-inline " + (sucesso ? "ok" : "erro");
+        card.classList.toggle("concluido", sucesso);
+        card.classList.toggle("falhou", !sucesso);
         if (ok && captura) {
             try { captura(JSON.parse(texto)); } catch { /* corpo não-JSON */ }
             atualizarContexto();
@@ -377,7 +512,7 @@ function render() {
                 textarea ? textarea.value : null,
                 card.querySelector(".resultado-inline"),
                 card.querySelector("button.executar"),
-                passo.captura);
+                passo.captura, passo.perfil, passo.esperado);
         };
         container.appendChild(card);
     });
@@ -435,7 +570,7 @@ function renderModoLivre(container) {
             card.querySelector("#livre-payload").value,
             card.querySelector(".resultado-inline"),
             card.querySelector("button.executar"),
-            null);
+            null, null, null);
     };
 
     container.appendChild(card);
@@ -449,8 +584,32 @@ function ligarControles() {
     $("#chip-servico").onclick = () => editarChip("servicoId", "id do serviço");
     $("#chip-peca").onclick = () => editarChip("pecaId", "id da peça");
     $("#chip-os").onclick = () => editarChip("osId", "id da OS");
+    const outro = $("#chip-os-outro");
+    if (outro) outro.onclick = () => editarChip("osOutroCliente", "id da OS de outro cliente");
 }
 
-render();
-ligarControles();
-atualizarContexto();
+/* O painel sobe funcionando mesmo sem Gateway: os passos de CPF simplesmente
+   não são renderizados, em vez de virarem botões que falhariam. */
+async function carregarConfiguracao() {
+    try {
+        const resp = await fetch("/config-demo");
+        if (!resp.ok) return;
+        const cfg = await resp.json();
+        API_GATEWAY = (cfg.apiGatewayUrl || "").replace(/\/+$/, "");
+        const rotulo = $("#tag-ambiente");
+        if (rotulo && cfg.ambiente) rotulo.textContent = cfg.ambiente;
+    } catch {
+        /* sem /config-demo (versão anterior da aplicação): segue sem Gateway */
+    }
+}
+
+carregarConfiguracao().then(() => {
+    if (API_GATEWAY) PASSOS.push(...PASSOS_CLIENTE);
+    render();
+    ligarControles();
+    atualizarContexto();
+    if (!API_GATEWAY) {
+        const aviso = $("#aviso-gateway");
+        if (aviso) aviso.hidden = false;
+    }
+});
