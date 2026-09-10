@@ -45,18 +45,18 @@ Ver [ADR 004](../docs/fase-3/adr/adr-004-padrao-de-comunicacao.md), §3.
 | `/oficina/{env}/eks/cluster-name` | repo 4 |
 | `/oficina/{env}/eks/endpoint` | repo 4 |
 
-## Passo zero — bootstrap do backend
+## Passo zero — backend do Terraform
 
-O bucket S3 e a tabela DynamoDB do state precisam existir **antes** do primeiro
-`terraform init`. Aplicado uma única vez:
+O bucket S3 e a tabela DynamoDB que guardam e travam o state precisam existir antes do
+primeiro `terraform init`. São criados uma única vez, com AWS CLI:
 
 ```bash
-cd bootstrap
-terraform init
-terraform apply -var="sufixo=SEU-IDENTIFICADOR-UNICO"
+bash scripts/fase-3/01-bootstrap.sh SEU-SUFIXO-UNICO
 ```
 
-O output devolve o comando de `init` pronto para os três repos de infraestrutura.
+Feito com CLI em vez de Terraform de propósito: é este passo que cria o backend onde o
+state dos outros módulos vai morar, então gerenciá-lo por Terraform exigiria um state
+local que ninguém compartilha.
 
 ## Execução
 
