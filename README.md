@@ -127,13 +127,23 @@ TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/clientes
 ```
 
+O token e o consumo acontecem em **hosts diferentes**, e é assim de propósito: o API
+Gateway publica apenas a Function de autenticação; a aplicação é servida pelo cluster.
+Quem emite a credencial não é quem guarda os dados.
+
 ```bash
-# Cliente (pelo API Gateway, quando a infraestrutura estiver no ar)
+# 1. Token — API Gateway -> Function serverless
+API_GATEWAY=$(aws ssm get-parameter --name /oficina/hom/apigw/invoke-url \
+  --query Parameter.Value --output text)
+
 TOKEN=$(curl -s -X POST "$API_GATEWAY/auth/cliente" \
   -H 'Content-Type: application/json' \
   -d '{"cpf":"529.982.247-25"}' | jq -r .accessToken)
 
-curl -H "Authorization: Bearer $TOKEN" "$API_GATEWAY/cliente/ordens-servico"
+# 2. Consumo — aplicação no cluster
+kubectl -n oficina port-forward svc/oficina-app 8080:80 &
+
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/cliente/ordens-servico
 ```
 
 ---
