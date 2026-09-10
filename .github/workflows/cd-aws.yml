@@ -154,19 +154,34 @@ jobs:
           kubectl -n "$NAMESPACE" create secret generic oficina-newrelic \
             --from-literal=license-key="$NR_KEY" \
             --dry-run=client -o yaml | kubectl apply -f -
-          # Com a chave presente, liga o exportador de traces. Sem ela o
-          # ConfigMap mantém 'none' e a app não tenta exportar (evita o
-          # loop de "Failed to export spans").
-          kubectl -n "$NAMESPACE" patch configmap oficina-app-config \
-            --type merge -p '{"data":{"OTEL_TRACES_EXPORTER":"otlp"}}' || true
 
       - name: Aplica os manifestos
         run: |
           kubectl apply -f k8s/
+          # Os patches vêm DEPOIS do apply, e não antes: 'kubectl apply'
+          # reescreve todo campo presente no manifesto versionado, então um
+          # patch aplicado antes seria silenciosamente desfeito aqui.
+          #
           # DB_URL vem do SSM, não do ConfigMap versionado: o endpoint do
           # RDS só existe depois que o repo 3 aplicou.
           kubectl -n "$NAMESPACE" patch configmap oficina-app-config \
             --type merge -p "{\"data\":{\"DB_URL\":\"${{ steps.ssm.outputs.jdbc }}\",\"AMBIENTE\":\"${AMBIENTE}\"}}"
+          # A chave-liga/desliga da telemetria é o SDK inteiro, não o
+          # exportador: é o SDK que cria os spans que injetam traceId no log
+          # e o exemplar de trace nas métricas — exportar é só o último
+          # passo. Sem license key ele fica desligado, senão a aplicação
+          # loga "Failed to export spans" em loop.
+          #
+          # E o exportador NÃO deve ser forçado para 'otlp' por env: em
+          # Quarkus o valor correto é 'cdi' (o default), porque a extensão
+          # registra o próprio exportador. Forçar 'otlp' delega ao
+          # autoconfigure do SDK puro, que procura um SPI que o Quarkus não
+          # registra — e o pod nem sobe, falhando com
+          # "opentelemetry-exporter-otlp not found on classpath".
+          if [ -n "$NR_KEY" ]; then
+            kubectl -n "$NAMESPACE" patch configmap oficina-app-config \
+              --type merge -p '{"data":{"OTEL_SDK_DISABLED":"false"}}'
+          fi
           # 'app' e o nome do CONTAINER (k8s/30-deployment.yaml), nao o do
           # Deployment: 'set image' casa pelo nome do container e falha com
           # "unable to find container named ..." se receber o outro.
