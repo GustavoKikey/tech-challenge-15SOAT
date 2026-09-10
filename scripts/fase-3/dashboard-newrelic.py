@@ -184,6 +184,38 @@ def paginas(cluster):
             "TIMESERIES SINCE 1 hour ago",
             9, 8, largura=4,
         ),
+        markdown(
+            "## Healthcheck e disponibilidade\n"
+            "As sondas do Kubernetes decidem se o pod recebe tráfego e se precisa ser "
+            "reiniciado. Estes painéis mostram o resultado disso do lado de fora: o que "
+            "o cliente recebeu, quantas réplicas estavam prontas, e se algum container "
+            "vem reiniciando em silêncio.",
+            1, 11,
+        ),
+        widget(
+            # 4xx fica de fora: cliente mandando CPF inválido não é
+            # indisponibilidade do serviço. O que conta é 5xx.
+            "Disponibilidade (sem 5xx)", "viz.line",
+            "SELECT percentage(sum(http_server_requests_seconds_count), "
+            f"WHERE status NOT LIKE '5%') AS 'Disponibilidade' FROM Metric {app} "
+            "TIMESERIES SINCE 24 hours ago",
+            1, 12, largura=5,
+        ),
+        widget(
+            # Sinal antecedente: a disponibilidade cai DEPOIS que as réplicas caem.
+            "Réplicas prontas", "viz.line",
+            f"SELECT uniqueCount(podName) AS 'Pods prontos' FROM K8sPodSample {k8s} "
+            "AND status = 'Running' TIMESERIES SINCE 24 hours ago",
+            6, 12, largura=4,
+        ),
+        widget(
+            # Pod instável enquanto o cluster ainda absorve o problema —
+            # e isso não dura para sempre.
+            "Reinícios de container", "viz.table",
+            f"SELECT sum(restartCount) AS 'Reinícios' FROM K8sContainerSample {k8s} "
+            "FACET podName SINCE 24 hours ago",
+            10, 12, largura=3,
+        ),
     ]
 
     return [

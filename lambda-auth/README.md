@@ -12,6 +12,53 @@ protegidas aceitam:
 2. **consulta existência e status** do cliente no RDS (`clientes.ativo`);
 3. **emite um JWT RS256** conforme o [ADR 001](https://github.com/GustavoKikey/tech-challenge-15SOAT/blob/main/docs/fase-3/adr/adr-001-contrato-jwt-cliente.md).
 
+## Arquitetura
+
+```mermaid
+flowchart LR
+    cliente["Cliente<br/>(navegador)"]
+
+    subgraph aws["AWS · us-east-1"]
+        gw["API Gateway<br/>HTTP API v2<br/>POST /auth/cliente<br/>10 req/s"]
+
+        subgraph vpc["VPC default"]
+            fn["Lambda<br/>oficina-{env}-auth<br/>Node.js 20"]
+            db[("RDS PostgreSQL<br/>clientes.documento<br/>clientes.ativo")]
+            app["Aplicação no EKS<br/>valida a assinatura"]
+        end
+
+        ssm[/"SSM Parameter Store<br/>rede · banco · apigw"/]
+        logs["CloudWatch Logs<br/>JSON, 14 dias"]
+    end
+
+    cliente -->|"1 · CPF"| gw
+    gw -->|2| fn
+    fn -->|"3 · existe e está ativo?"| db
+    fn -->|"4 · JWT RS256, 30 min"| cliente
+    cliente -->|"5 · Bearer"| app
+
+    ssm -.->|"endereços, no apply"| fn
+    fn -.-> logs
+
+    style fn fill:#fff3e0,stroke:#e08c1a
+    style gw fill:#e8f0fc,stroke:#1e6fd9
+    style db fill:#eef7ee,stroke:#1d8a4e
+```
+
+Três decisões que o desenho revela:
+
+**A Function fala com o banco, a aplicação não participa da autenticação.** Ela só
+recebe o token pronto e confere a assinatura com a chave pública — não sabe autenticar
+cliente, e não precisa saber.
+
+**Sem saída para a internet.** O security group da função libera apenas a porta 5432,
+e apenas para o security group do banco. Endpoint, senha e chave privada chegam como
+variáveis de ambiente, injetadas no `terraform apply` — não são buscadas em runtime.
+
+**Os endereços vêm do Parameter Store.** Nada de rede ou de banco está escrito neste
+repositório: ele lê o que os repositórios 2 e 3 publicaram. É o que permite os quatro
+evoluírem separados.
+
 ## API
 
 `POST /auth/cliente`

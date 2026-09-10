@@ -185,6 +185,61 @@ TIMESERIES SINCE 1 hour ago
 O `clusterName` é `oficina-<ambiente>`. Trocar de ambiente exige trocá-lo nas consultas —
 o script do dashboard recebe o ambiente como argumento justamente por isso.
 
+### Healthcheck e disponibilidade
+
+O enunciado pede healthchecks e uptime. Eles existem em duas camadas, e vale distinguir
+o que cada uma responde.
+
+**Dentro do cluster**, o Kubernetes executa três sondas contra a aplicação — as do
+SmallRye Health, declaradas em `k8s/30-deployment.yaml`:
+
+| Sonda | Endpoint | O que decide |
+| --- | --- | --- |
+| `startupProbe` | `/q/health/started` | segura as outras até o boot e as migrações terminarem |
+| `readinessProbe` | `/q/health/ready` | tira o pod do Service quando ele não pode atender |
+| `livenessProbe` | `/q/health/live` | reinicia o container quando a aplicação trava |
+
+A distinção entre *ready* e *live* é o que evita o pior caso: um pod que perdeu o banco
+sai do balanceamento (readiness falha) mas **não** é reiniciado, porque reiniciar não
+traria o banco de volta — só transformaria uma indisponibilidade parcial em um ciclo de
+reinícios.
+
+**Disponibilidade observada**, medida pelo que o cliente de fato recebeu:
+
+```sql
+SELECT percentage(sum(http_server_requests_seconds_count), WHERE status NOT LIKE '5%')
+       AS 'Disponibilidade'
+FROM Metric
+WHERE app_kubernetes_io_name = 'oficina-app'
+TIMESERIES SINCE 24 hours ago
+```
+
+Erro 4xx não entra na conta: cliente mandando CPF inválido não é indisponibilidade do
+serviço. O que conta é `5xx`, onde a culpa é da aplicação.
+
+Réplicas prontas ao longo do tempo, que é o sinal antecedente — a disponibilidade cai
+*depois* que as réplicas caem:
+
+```sql
+SELECT uniqueCount(podName) AS 'Pods prontos'
+FROM K8sPodSample
+WHERE clusterName = 'oficina-prod'
+  AND namespaceName = 'oficina'
+  AND status = 'Running'
+TIMESERIES SINCE 24 hours ago
+```
+
+Reinícios de container, que denunciam pod instável mesmo quando a disponibilidade ainda
+está boa — o cluster está absorvendo o problema, e isso não dura para sempre:
+
+```sql
+SELECT sum(restartCount) AS 'Reinícios'
+FROM K8sContainerSample
+WHERE clusterName = 'oficina-prod' AND namespaceName = 'oficina'
+FACET podName
+SINCE 24 hours ago
+```
+
 ### Saúde dos pods
 
 ```sql
