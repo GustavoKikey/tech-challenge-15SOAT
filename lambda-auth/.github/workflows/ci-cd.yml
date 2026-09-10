@@ -1,0 +1,156 @@
+# =====================================================================
+# CI/CD — Function Serverless de autenticação (repo 1)
+# ---------------------------------------------------------------------
+# PR              -> testes + validação do Terraform + plan
+# push em homolog -> testes + apply no ambiente 'hom' + smoke test
+# push em main    -> testes + apply no ambiente 'prod' + smoke test
+#
+# Diferente dos repos de infra pura, aqui existe CÓDIGO: os testes rodam
+# antes de qualquer coisa e barram o deploy.
+# =====================================================================
+name: CI/CD
+
+on:
+  pull_request:
+    branches: [main, homolog]
+  push:
+    branches: [main, homolog]
+  workflow_dispatch:
+
+concurrency:
+  group: lambda-auth-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: "1.9.8"
+  NODE_VERSION: "20"
+  AWS_REGION: us-east-1
+
+jobs:
+  # ===================================================================
+  # 1) Testes do código da função
+  # ===================================================================
+  testes:
+    name: Testes (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      # Cobrem a validação de CPF (incluindo equivalência com o algoritmo
+      # Java) e o contrato do token do ADR 001. Se o contrato mudar aqui
+      # sem mudar na aplicação, estes testes quebram — que é o objetivo.
+      - name: Testes
+        run: npm test
+
+  # ===================================================================
+  # 2) Validação do Terraform
+  # ===================================================================
+  terraform-validar:
+    name: Terraform — formato e sintaxe
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - run: terraform fmt -check -recursive -diff
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+
+  # ===================================================================
+  # 3) Deploy
+  # ===================================================================
+  deploy:
+    name: Deploy (${{ github.ref_name == 'main' && 'prod' || 'hom' }})
+    needs: [testes, terraform-validar]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'hom' }}
+    outputs:
+      invoke_url: ${{ steps.saida.outputs.invoke_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # --omit=dev: o zip da função não leva vitest nem nada de teste.
+      # O Terraform empacota o que estiver em node_modules neste momento.
+      - name: Dependências de produção
+        run: npm ci --omit=dev
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        working-directory: infra
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
+
+      # A chave privada vem do secret em base64 e é injetada como variável
+      # de ambiente da função. Nunca aparece no log: o Terraform trata a
+      # variável como sensitive e o GitHub mascara o secret.
+      - name: Apply
+        working-directory: infra
+        run: |
+          terraform apply -auto-approve -input=false \
+            -var="ambiente=${{ github.ref_name == 'main' && 'prod' || 'hom' }}" \
+            -var="jwt_private_key_base64=${{ secrets.JWT_PRIVATE_KEY_BASE64 }}"
+
+      - name: Captura a URL do gateway
+        id: saida
+        working-directory: infra
+        run: echo "invoke_url=$(terraform output -raw invoke_url)" >> "$GITHUB_OUTPUT"
+
+      # Prova que o deploy funcionou de verdade: um CPF inválido tem que
+      # voltar 400 — resposta que só a função consegue dar. Se o gateway
+      # ou a Lambda estiverem quebrados, vem 500 ou 502 e o job falha.
+      - name: Smoke test
+        run: |
+          URL="${{ steps.saida.outputs.invoke_url }}/auth/cliente"
+          echo "Testando $URL"
+          codigo=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
+            --retry 5 --retry-delay 3 --retry-all-errors \
+            -X POST "$URL" -H 'Content-Type: application/json' \
+            -d '{"cpf":"111.111.111-11"}')
+          echo "HTTP $codigo — $(cat /tmp/resp.json)"
+          test "$codigo" = "400" || { echo "Esperado 400 para CPF invalido"; exit 1; }
+          echo "Smoke test OK: a funcao esta no ar e validando CPF."
+
+      - name: Resumo
+        if: always()
+        run: |
+          {
+            echo "## Function de autenticação — \`${{ github.ref_name == 'main' && 'prod' || 'hom' }}\`"
+            echo
+            echo "Endpoint: \`${{ steps.saida.outputs.invoke_url }}/auth/cliente\`"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,172 @@
+# =====================================================================
+# CI/CD — Infraestrutura do Banco de Dados (repo 3)
+# ---------------------------------------------------------------------
+# PR   -> fmt, validate, tflint e plan (comentado no PR). Nunca aplica.
+# push em homolog -> apply no ambiente 'hom'
+# push em main    -> apply no ambiente 'prod'
+#
+# A branch main é protegida: só entra por Pull Request aprovado.
+# =====================================================================
+name: Terraform
+
+on:
+  pull_request:
+    branches: [main, homolog]
+  push:
+    branches: [main, homolog]
+  workflow_dispatch:
+
+# Um apply por vez. Sem isso, dois merges próximos disputariam o lock do
+# DynamoDB e um deles falharia no meio.
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: "1.9.8"
+  AWS_REGION: us-east-1
+
+jobs:
+  # ===================================================================
+  # Validação — roda em PR e em push, sem tocar na nuvem
+  # ===================================================================
+  validar:
+    name: Formato, sintaxe e lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Formatação
+        run: terraform fmt -check -recursive -diff
+
+      # -backend=false: valida sintaxe e tipos sem precisar de credencial
+      # nem do bucket de state. É o que permite validar em fork/PR externo.
+      - name: Inicialização sem backend
+        run: terraform init -backend=false -input=false
+
+      - name: Validação
+        run: terraform validate
+
+      - name: tflint
+        uses: terraform-linters/setup-tflint@v4
+      - run: tflint --recursive
+
+  # ===================================================================
+  # Plan — só em PR, comentado no próprio PR
+  # ===================================================================
+  plan:
+    name: Plan (${{ github.base_ref == 'main' && 'prod' || 'hom' }})
+    needs: validar
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    environment: ${{ github.base_ref == 'main' && 'prod' || 'hom' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # Credenciais do AWS Academy são TEMPORÁRIAS (sessão de 4h): o
+      # AWS_SESSION_TOKEN precisa ser renovado nos secrets a cada sessão.
+      # Numa conta própria, trocar por OIDC (role-to-assume) e remover
+      # as três chaves. Ver RFC 001, §5.
+      - name: Credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
+
+      - name: Plan
+        id: plan
+        run: |
+          terraform plan -input=false -no-color \
+            -var="ambiente=${{ github.base_ref == 'main' && 'prod' || 'hom' }}" \
+            -out=tfplan 2>&1 | tee plan.txt
+        continue-on-error: true
+
+      - name: Comentar o plan no PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let plan = fs.readFileSync('plan.txt', 'utf8');
+            // Comentário do GitHub tem limite de 65536 caracteres.
+            const LIMITE = 60000;
+            if (plan.length > LIMITE) {
+              plan = plan.slice(0, LIMITE) + '\n\n... (truncado — ver log completo na aba Actions)';
+            }
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### Terraform plan — \`infra-database\`\n\n<details><summary>Ver plano</summary>\n\n\`\`\`hcl\n${plan}\n\`\`\`\n\n</details>`
+            });
+
+      - name: Falhar se o plan falhou
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+  # ===================================================================
+  # Apply — só em push nas branches de ambiente
+  # ===================================================================
+  apply:
+    name: Apply (${{ github.ref_name == 'main' && 'prod' || 'hom' }})
+    needs: validar
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # O Environment do GitHub guarda os secrets por ambiente e permite
+    # exigir aprovação manual antes do apply em prod.
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'hom' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
+
+      - name: Apply
+        run: |
+          terraform apply -auto-approve -input=false \
+            -var="ambiente=${{ github.ref_name == 'main' && 'prod' || 'hom' }}"
+
+      - name: Resumo
+        if: always()
+        run: |
+          {
+            echo "## Banco de dados — \`${{ github.ref_name == 'main' && 'prod' || 'hom' }}\`"
+            echo
+            echo '```'
+            terraform output 2>/dev/null || echo "(sem outputs — o apply falhou?)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

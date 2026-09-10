@@ -1,0 +1,194 @@
+# =====================================================================
+# CD — Aplicação principal no EKS (repo 4) — FASE 3
+# ---------------------------------------------------------------------
+# Substitui o cd.yml da fase 2 (que subia um cluster kind efêmero dentro
+# do runner) por deploy num cluster EKS real.
+#
+# push em homolog -> ambiente 'hom'
+# push em main    -> ambiente 'prod'
+#
+# Este repo NÃO roda Terraform: consome o que os repos 2 e 3 criaram,
+# lendo os endereços do SSM Parameter Store.
+# =====================================================================
+name: CD (AWS)
+
+on:
+  push:
+    branches: [main, homolog]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-aws-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  AWS_REGION: us-east-1
+  NAMESPACE: oficina
+
+jobs:
+  testes:
+    name: Build + testes (mvn verify)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # Docker 29+ exige API >= 1.44 para o Testcontainers.
+      - name: Compatibilidade Testcontainers × Docker
+        run: echo "api.version=1.44" > ~/.docker-java.properties
+
+      - name: Testes unitários e de integração
+        run: mvn -B -ntp verify -DskipITs=false
+
+  imagem:
+    name: Imagem Docker no ECR
+    needs: testes
+    runs-on: ubuntu-latest
+    outputs:
+      imagem: ${{ steps.meta.outputs.imagem }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login no ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # O repositório do ECR é criado aqui, e não no Terraform, porque
+      # pertence ao ciclo de vida da APLICAÇÃO, não da infraestrutura:
+      # não faz sentido destruí-lo junto com o cluster.
+      - name: Garante o repositório no ECR
+        env:
+          REPO: oficina-app
+        run: |
+          aws ecr describe-repositories --repository-names "$REPO" >/dev/null 2>&1 \
+            || aws ecr create-repository --repository-name "$REPO" \
+                 --image-scanning-configuration scanOnPush=true
+
+      - name: Define a referência da imagem
+        id: meta
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          echo "imagem=$REGISTRY/oficina-app:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "imagem_latest=$REGISTRY/oficina-app:latest"    >> "$GITHUB_OUTPUT"
+
+      - name: Build e push
+        run: |
+          docker build -t "${{ steps.meta.outputs.imagem }}" \
+                       -t "${{ steps.meta.outputs.imagem_latest }}" .
+          docker push "${{ steps.meta.outputs.imagem }}"
+          docker push "${{ steps.meta.outputs.imagem_latest }}"
+
+  deploy:
+    name: Deploy no EKS (${{ github.ref_name == 'main' && 'prod' || 'hom' }})
+    needs: imagem
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'hom' }}
+    env:
+      AMBIENTE: ${{ github.ref_name == 'main' && 'prod' || 'hom' }}
+      # O contexto `secrets` não é permitido em `if:` de step — por isso o
+      # segredo é exposto aqui, no nível do job, e o step testa a env.
+      NR_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # É aqui que o contrato entre repositórios se materializa: o nome do
+      # cluster e a URL do banco não estão em lugar nenhum deste repo —
+      # vêm do SSM, publicados pelos repos 2 e 3.
+      - name: Lê o contrato no SSM
+        id: ssm
+        run: |
+          prefixo="/oficina/${AMBIENTE}"
+          cluster=$(aws ssm get-parameter --name "$prefixo/eks/cluster-name" --query Parameter.Value --output text)
+          jdbc=$(aws ssm get-parameter --name "$prefixo/db/jdbc-url" --query Parameter.Value --output text)
+          secret=$(aws ssm get-parameter --name "$prefixo/db/secret-arn" --query Parameter.Value --output text)
+          echo "cluster=$cluster" >> "$GITHUB_OUTPUT"
+          echo "jdbc=$jdbc"       >> "$GITHUB_OUTPUT"
+          echo "secret=$secret"   >> "$GITHUB_OUTPUT"
+          echo "Cluster: $cluster"
+
+      - name: Aponta o kubectl para o cluster
+        run: |
+          aws eks update-kubeconfig --region "$AWS_REGION" --name "${{ steps.ssm.outputs.cluster }}"
+          kubectl get nodes
+
+      - name: Credenciais do banco no cluster
+        run: |
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+          json=$(aws secretsmanager get-secret-value --secret-id "${{ steps.ssm.outputs.secret }}" --query SecretString --output text)
+          usuario=$(echo "$json" | python3 -c 'import sys,json;print(json.load(sys.stdin)["username"])')
+          senha=$(echo "$json"   | python3 -c 'import sys,json;print(json.load(sys.stdin)["password"])')
+          kubectl -n "$NAMESPACE" create secret generic oficina-db-credentials \
+            --from-literal=username="$usuario" \
+            --from-literal=password="$senha" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: New Relic (opcional)
+        if: env.NR_KEY != ''
+        run: |
+          kubectl -n "$NAMESPACE" create secret generic oficina-newrelic \
+            --from-literal=license-key="$NR_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          # Com a chave presente, liga o exportador de traces. Sem ela o
+          # ConfigMap mantém 'none' e a app não tenta exportar (evita o
+          # loop de "Failed to export spans").
+          kubectl -n "$NAMESPACE" patch configmap oficina-app-config \
+            --type merge -p '{"data":{"OTEL_TRACES_EXPORTER":"otlp"}}' || true
+
+      - name: Aplica os manifestos
+        run: |
+          kubectl apply -f k8s/
+          # DB_URL vem do SSM, não do ConfigMap versionado: o endpoint do
+          # RDS só existe depois que o repo 3 aplicou.
+          kubectl -n "$NAMESPACE" patch configmap oficina-app-config \
+            --type merge -p "{\"data\":{\"DB_URL\":\"${{ steps.ssm.outputs.jdbc }}\",\"AMBIENTE\":\"${AMBIENTE}\"}}"
+          kubectl -n "$NAMESPACE" set image deployment/oficina-app \
+            oficina-app="${{ needs.imagem.outputs.imagem }}"
+          kubectl -n "$NAMESPACE" rollout status deployment/oficina-app --timeout=600s
+
+      - name: Smoke test
+        run: |
+          kubectl -n "$NAMESPACE" port-forward service/oficina-app 8080:80 &
+          sleep 10
+          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors http://localhost:8080/health
+          echo
+          curl -fsS http://localhost:8080/q/metrics | grep -q "^http_server_requests" \
+            && echo "Smoke test OK: health e metricas respondendo."
+
+      - name: Resumo
+        if: always()
+        run: |
+          {
+            echo "## Aplicação — \`${AMBIENTE}\`"
+            echo
+            echo "Imagem: \`${{ needs.imagem.outputs.imagem }}\`"
+            echo
+            echo '```'
+            kubectl -n "$NAMESPACE" get deploy,pods,svc,hpa 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
