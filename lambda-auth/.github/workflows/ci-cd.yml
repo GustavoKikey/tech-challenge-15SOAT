@@ -114,7 +114,8 @@ jobs:
         run: |
           terraform init -input=false \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}" \
+            -backend-config="key=lambda-auth/${{ github.ref_name == 'main' && 'prod' || 'hom' }}/terraform.tfstate"
 
       # A chave privada vem do secret em base64 e é injetada como variável
       # de ambiente da função. Nunca aparece no log: o Terraform trata a

@@ -40,22 +40,26 @@ if [ "$confirma" != "$AMBIENTE" ]; then
   exit 1
 fi
 
+# Argumentos: <diretório> <prefixo do state> [extras do terraform destroy].
+# A chave inclui o ambiente — destruir hom não pode alcançar prod (adr-005).
 destruir() {
   local dir="$1"
-  shift
+  local modulo="$2"
+  shift 2
   echo
-  echo "==> destruindo $dir"
+  echo "==> destruindo $dir  (state: $modulo/$AMBIENTE)"
   cd "$RAIZ/$dir" || return
   terraform init -input=false -reconfigure \
     -backend-config="bucket=${TF_STATE_BUCKET}" \
-    -backend-config="dynamodb_table=${TF_LOCK_TABLE}" >/dev/null 2>&1
+    -backend-config="dynamodb_table=${TF_LOCK_TABLE}" \
+    -backend-config="key=${modulo}/${AMBIENTE}/terraform.tfstate" >/dev/null 2>&1
   terraform destroy -auto-approve -input=false -var="ambiente=${AMBIENTE}" "$@" \
     || echo "   (falhou — pode já não existir; seguindo adiante)"
 }
 
-destruir lambda-auth/infra -var="jwt_private_key_base64=${JWT_PRIVATE_KEY_BASE64:-x}"
-destruir infra-database
-destruir infra-k8s
+destruir lambda-auth/infra lambda-auth -var="jwt_private_key_base64=${JWT_PRIVATE_KEY_BASE64:-x}"
+destruir infra-database   infra-database
+destruir infra-k8s        infra-k8s
 
 echo
 echo "Confirmando que não sobrou nada cobrando:"

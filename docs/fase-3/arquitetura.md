@@ -47,6 +47,7 @@ Os dois formatos aparecem porque servem a coisas diferentes, e o enunciado pede 
 | [002](adr/adr-002-descontinuar-rotas-publicas.md) | Rotas públicas da fase 2 | Depreciar, não remover |
 | [003](adr/adr-003-uso-de-hpa.md) | Escalabilidade | HPA nativo, 2 a 5 réplicas |
 | [004](adr/adr-004-padrao-de-comunicacao.md) | Padrão de comunicação | REST síncrono entre processos; transação única entre bounded contexts |
+| [005](adr/adr-005-state-por-ambiente.md) | Isolamento de ambientes | Chave do state do Terraform inclui o ambiente |
 
 ## Documentos de apoio
 

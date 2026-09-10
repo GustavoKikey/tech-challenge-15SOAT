@@ -91,7 +91,8 @@ jobs:
         run: |
           terraform init -input=false \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}" \
+            -backend-config="key=infra-k8s/${{ github.base_ref == 'main' && 'prod' || 'hom' }}/terraform.tfstate"
 
       - name: Plan
         id: plan
@@ -153,7 +154,8 @@ jobs:
         run: |
           terraform init -input=false \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}" \
+            -backend-config="key=infra-k8s/${{ github.ref_name == 'main' && 'prod' || 'hom' }}/terraform.tfstate"
 
       - name: Apply
         run: |
