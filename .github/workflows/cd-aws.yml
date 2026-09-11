@@ -120,8 +120,45 @@ jobs:
       # É aqui que o contrato entre repositórios se materializa: o nome do
       # cluster e a URL do banco não estão em lugar nenhum deste repo —
       # vêm do SSM, publicados pelos repos 2 e 3.
+      # A infraestrutura deste projeto é efêmera: a sessão do Learner Lab dura
+      # 4 horas e o ambiente é destruído entre demonstrações, para não queimar
+      # crédito. Nesse intervalo NÃO existe cluster para receber deploy.
+      #
+      # Sem esta verificação, todo push na main enquanto o lab está desligado
+      # pinta a pipeline de vermelho por um motivo que não é defeito de
+      # código — e um repositório permanentemente vermelho ensina quem olha a
+      # ignorar o vermelho, que é o oposto do que a cor serve para fazer.
+      #
+      # A distinção que importa: parâmetro AUSENTE significa ambiente
+      # desprovisionado, e o deploy é pulado. Parâmetro presente com cluster
+      # inalcançável continua sendo falha, e quebra a pipeline como deve.
+      - name: A infraestrutura está provisionada?
+        id: infra
+        run: |
+          if aws ssm get-parameter --name "/oficina/${AMBIENTE}/eks/cluster-name" >/dev/null 2>&1; then
+            echo "provisionada=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "provisionada=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Deploy pulado — ambiente \`${AMBIENTE}\` não provisionado"
+              echo
+              echo "Não há cluster para receber a aplicação: o parâmetro"
+              echo "\`/oficina/${AMBIENTE}/eks/cluster-name\` não existe no Parameter Store."
+              echo
+              echo "A imagem foi construída e publicada no ECR normalmente — ela espera lá."
+              echo
+              echo "Para provisionar e implantar:"
+              echo
+              echo '```bash'
+              echo "bash scripts/fase-3/02-aplicar.sh ${AMBIENTE}"
+              echo "bash scripts/fase-3/03-observabilidade.sh ${AMBIENTE}"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Lê o contrato no SSM
         id: ssm
+        if: steps.infra.outputs.provisionada == 'true'
         run: |
           prefixo="/oficina/${AMBIENTE}"
           cluster=$(aws ssm get-parameter --name "$prefixo/eks/cluster-name" --query Parameter.Value --output text)
@@ -138,11 +175,13 @@ jobs:
           echo "Cluster: $cluster"
 
       - name: Aponta o kubectl para o cluster
+        if: steps.infra.outputs.provisionada == 'true'
         run: |
           aws eks update-kubeconfig --region "$AWS_REGION" --name "${{ steps.ssm.outputs.cluster }}"
           kubectl get nodes
 
       - name: Credenciais do banco no cluster
+        if: steps.infra.outputs.provisionada == 'true'
         run: |
           kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
           json=$(aws secretsmanager get-secret-value --secret-id "${{ steps.ssm.outputs.secret }}" --query SecretString --output text)
@@ -154,13 +193,14 @@ jobs:
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: New Relic (opcional)
-        if: env.NR_KEY != ''
+        if: env.NR_KEY != '' && steps.infra.outputs.provisionada == 'true'
         run: |
           kubectl -n "$NAMESPACE" create secret generic oficina-newrelic \
             --from-literal=license-key="$NR_KEY" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Aplica os manifestos
+        if: steps.infra.outputs.provisionada == 'true'
         run: |
           # A lista de IPs liberados no balanceador é guardada ANTES do apply
           # e reposta depois. O manifesto a declara fechada, então um apply
@@ -210,6 +250,7 @@ jobs:
           kubectl -n "$NAMESPACE" rollout status deployment/oficina-app --timeout=600s
 
       - name: Smoke test
+        if: steps.infra.outputs.provisionada == 'true'
         run: |
           kubectl -n "$NAMESPACE" port-forward service/oficina-app 8080:80 &
           sleep 10
@@ -218,8 +259,10 @@ jobs:
           curl -fsS http://localhost:8080/q/metrics | grep -q "^http_server_requests" \
             && echo "Smoke test OK: health e metricas respondendo."
 
+      # Sem ambiente provisionado, o passo anterior já escreveu o resumo
+      # explicando o porquê. Este aqui anunciaria um deploy que não houve.
       - name: Resumo
-        if: always()
+        if: always() && steps.infra.outputs.provisionada == 'true'
         run: |
           {
             echo "## Aplicação — \`${AMBIENTE}\`"
