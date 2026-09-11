@@ -31,7 +31,7 @@ source "$RAIZ/scripts/fase-3/.backend.env"
 
 echo "Isto vai DESTRUIR a infraestrutura de '${AMBIENTE}':"
 echo "  - Lambda e API Gateway"
-echo "  - RDS PostgreSQL (com os dados)"
+echo "  - RDS PostgreSQL (com os dados, e SEM snapshot final)"
 echo "  - Cluster EKS e security groups"
 echo
 read -r -p "Digite ${AMBIENTE} para confirmar: " confirma
@@ -57,8 +57,71 @@ destruir() {
     || echo "   (falhou — pode já não existir; seguindo adiante)"
 }
 
+# ---------------------------------------------------------------------
+# ANTES do Terraform: o que o Kubernetes criou fora dele
+# ---------------------------------------------------------------------
+# O balanceador da aplicação não pertence ao Terraform. Quem o criou foi o
+# controlador do Kubernetes, ao ver um Service do tipo LoadBalancer — e por
+# isso destruir o cluster não o remove: ele fica órfão na conta, cobrando
+# por hora, sem aparecer em nenhum state.
+#
+# É um vazamento silencioso: o 'terraform destroy' termina dizendo
+# "Destroy complete", e a fatura continua andando.
+#
+# Apagar o namespace faz o controlador desfazer o que criou, na ordem
+# certa. Sem cluster acessível — porque já foi destruído antes, por
+# exemplo — não há o que fazer aqui, e seguimos adiante.
+echo
+echo "==> removendo o que o Kubernetes criou fora do Terraform"
+if kubectl cluster-info >/dev/null 2>&1; then
+  for ns in oficina newrelic; do
+    if kubectl get namespace "$ns" >/dev/null 2>&1; then
+      echo "    namespace $ns"
+      kubectl delete namespace "$ns" --timeout=300s >/dev/null 2>&1 \
+        || echo "    (não saiu no tempo; verifique balanceadores órfãos no fim)"
+    fi
+  done
+
+  # O controlador apaga o balanceador de forma assíncrona. Destruir o
+  # cluster antes disso deixa o recurso pendurado.
+  echo "    aguardando o balanceador sumir"
+  for _ in $(seq 1 18); do
+    restantes=$(aws elb describe-load-balancers \
+      --query 'length(LoadBalancerDescriptions)' --output text 2>/dev/null || echo 0)
+    [ "${restantes:-0}" = "0" ] && break
+    sleep 10
+  done
+else
+  echo "    cluster inacessível — nada a remover"
+fi
+
+# ---------------------------------------------------------------------
+# A proteção contra exclusão precisa sair antes
+# ---------------------------------------------------------------------
+# Em 'prod' o banco nasce com deletion_protection ligada — o que está certo
+# para produção de verdade, e é justamente o que impede este script de
+# funcionar num ambiente que só se chama prod.
+#
+# O 'terraform destroy' NÃO desliga a trava: ele tenta apagar e a AWS
+# recusa. E o erro anterior, sobre snapshot final, aparece primeiro e
+# esconde este — some o segundo motivo e o destroy falha de novo, pelo
+# primeiro. Desligar aqui, antes, resolve os dois de uma vez, junto com
+# -var="ambiente_efemero=true".
+BANCO="oficina-${AMBIENTE}"
+if aws rds describe-db-instances --db-instance-identifier "$BANCO" >/dev/null 2>&1; then
+  PROTEGIDO=$(aws rds describe-db-instances --db-instance-identifier "$BANCO" \
+    --query 'DBInstances[0].DeletionProtection' --output text 2>/dev/null || echo "False")
+  if [ "$PROTEGIDO" = "True" ]; then
+    echo
+    echo "==> desligando a proteção contra exclusão de $BANCO"
+    aws rds modify-db-instance --db-instance-identifier "$BANCO" \
+      --no-deletion-protection --apply-immediately >/dev/null 2>&1 || true
+    sleep 15
+  fi
+fi
+
 destruir lambda-auth/infra lambda-auth -var="jwt_private_key_base64=${JWT_PRIVATE_KEY_BASE64:-x}"
-destruir infra-database   infra-database
+destruir infra-database   infra-database -var="ambiente_efemero=true"
 destruir infra-k8s        infra-k8s
 
 echo
