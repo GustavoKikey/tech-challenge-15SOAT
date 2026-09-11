@@ -106,8 +106,17 @@ resource "aws_db_instance" "este" {
   publicly_accessible = false
 
   backup_retention_period = var.dias_backup
-  skip_final_snapshot     = var.ambiente != "prod"
-  deletion_protection     = var.ambiente == "prod"
+  # Em produção de verdade estas duas travas são o que impede uma linha de
+  # comando distraída de apagar o banco. Aqui elas continuam ligadas por
+  # padrão — e "ambiente_efemero" é a forma de dizer, explicitamente e por
+  # fora do código, que ESTE ambiente é descartável.
+  #
+  # Sem essa saída, "prod" no Learner Lab fica indestrutível pelo próprio
+  # script de destruição: o destroy falha pedindo nome de snapshot final,
+  # o recurso continua de pé, e a conta segue correndo enquanto a saída
+  # do terraform anuncia que terminou.
+  skip_final_snapshot = var.ambiente_efemero || var.ambiente != "prod"
+  deletion_protection = !var.ambiente_efemero && var.ambiente == "prod"
 
   # Multi-AZ desligado: dobraria o custo e estoura o crédito de US$ 50 do
   # Learner Lab. Débito conhecido e declarado — RFC 002, §4.

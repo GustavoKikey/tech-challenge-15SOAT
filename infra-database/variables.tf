@@ -63,3 +63,15 @@ variable "dias_backup" {
   type        = number
   default     = 7
 }
+
+# A conta do Learner Lab é recriada o tempo todo, e o ambiente chamado "prod"
+# ali não é produção: é uma demonstração que sobe e desce no mesmo dia. Esta
+# variável separa as duas coisas sem enfraquecer o padrão.
+#
+# Fica FALSE por padrão de propósito: a proteção precisa valer a menos que
+# alguém afirme o contrário, não o inverso.
+variable "ambiente_efemero" {
+  description = "Dispensa snapshot final e proteção contra exclusão. Só para ambiente descartável."
+  type        = bool
+  default     = false
+}
